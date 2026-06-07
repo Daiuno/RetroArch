@@ -126,6 +126,26 @@ void driver_camera_stop(void)
       camera_st->driver->stop(camera_st->data);
 }
 
+#ifdef HAVE_AVF
+/* Forward declaration for AVFoundation camera switch */
+bool avfoundation_switch_camera(void *data, bool use_front_camera);
+#endif
+
+bool driver_camera_switch(bool use_front_camera)
+{
+   camera_driver_state_t *camera_st = &camera_driver_st;
+   if (!camera_st || !camera_st->data || !camera_st->driver)
+      return false;
+
+#ifdef HAVE_AVF
+   if (strcmp(camera_st->driver->ident, "avfoundation") == 0)
+      return avfoundation_switch_camera(camera_st->data, use_front_camera);
+#endif
+
+   /* Other drivers don't support camera switching */
+   return false;
+}
+
 bool camera_driver_find_driver(const char *prefix,
       bool verbosity_enabled)
 {

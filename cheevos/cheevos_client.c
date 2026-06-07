@@ -102,11 +102,11 @@ void rcheevos_get_user_agent(rcheevos_locals_t *locals,
          int major, minor;
          frontend->get_os(tmp, sizeof(tmp), &major, &minor);
          snprintf(locals->user_agent_prefix, sizeof(locals->user_agent_prefix),
-            "RetroArch/%s (%s %d.%d)", PACKAGE_VERSION, tmp, major, minor);
+            "ManicEMU/%s (%s %d.%d)", PACKAGE_VERSION, tmp, major, minor);
       }
       else
          snprintf(locals->user_agent_prefix, sizeof(locals->user_agent_prefix),
-            "RetroArch/%s", PACKAGE_VERSION);
+            "ManicEMU/%s", PACKAGE_VERSION);
    }
 
    /* append the non-changing portion */

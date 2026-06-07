@@ -81,6 +81,12 @@
 /* Define this macro to prevent cheevos from being deactivated when they trigger. */
 #undef CHEEVOS_DONT_DEACTIVATE
 
+//注册事件回调
+static CheevosEventCallback g_cheevos_event_callback = NULL;
+void cheevos_event_register_callback(CheevosEventCallback callback) {
+   g_cheevos_event_callback = callback;
+}
+
 static rcheevos_locals_t rcheevos_locals =
 {
    NULL, /* client */
@@ -534,48 +540,63 @@ static void rcheevos_server_reconnected(void)
 
 static void rcheevos_client_event_handler(const rc_client_event_t* event, rc_client_t* client)
 {
+   //回调事件
+   void* object1 = NULL;
+   void* object2 = NULL;
    switch (event->type)
    {
 #ifdef HAVE_GFX_WIDGETS
    case RC_CLIENT_EVENT_LEADERBOARD_TRACKER_UPDATE:
       rcheevos_lboard_update_tracker(event->leaderboard_tracker);
+      object1 = event->leaderboard_tracker;
       break;
    case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_SHOW:
       rcheevos_challenge_started(event->achievement);
+      object1 = event->achievement;
       break;
    case RC_CLIENT_EVENT_ACHIEVEMENT_CHALLENGE_INDICATOR_HIDE:
       rcheevos_challenge_ended(event->achievement);
+      object1 = event->achievement;
       break;
    case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_SHOW:
       rcheevos_progress_updated(&rcheevos_locals, event->achievement);
+      object1 = event->achievement;
       break;
    case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
       rcheevos_progress_updated(&rcheevos_locals, event->achievement);
+      object1 = event->achievement;
       break;
    case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_HIDE:
       rcheevos_progress_hide(&rcheevos_locals);
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_TRACKER_SHOW:
       rcheevos_lboard_update_tracker(event->leaderboard_tracker);
+      object1 = event->leaderboard_tracker;
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_TRACKER_HIDE:
       rcheevos_lboard_hide_tracker(event->leaderboard_tracker);
+      object1 = event->leaderboard_tracker;
       break;
 #endif
    case RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED:
       rcheevos_award_achievement(event->achievement);
+      object1 = event->achievement;
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_STARTED:
       rcheevos_lboard_started(event->leaderboard);
+      object1 = event->leaderboard;
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_FAILED:
       rcheevos_lboard_canceled(event->leaderboard);
+      object1 = event->leaderboard;
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_SUBMITTED:
       /* don't notify on submission - report new rank/best score after submission via SCOREBOARD event */
       break;
    case RC_CLIENT_EVENT_LEADERBOARD_SCOREBOARD:
       rcheevos_lboard_submitted(event->leaderboard, event->leaderboard_scoreboard);
+      object1 = event->leaderboard;
+      object2 = event->leaderboard_scoreboard;
       break;
    case RC_CLIENT_EVENT_RESET:
       command_event(CMD_EVENT_RESET, NULL); /* reset the game */
@@ -585,6 +606,7 @@ static void rcheevos_client_event_handler(const rc_client_event_t* event, rc_cli
       break;
    case RC_CLIENT_EVENT_SERVER_ERROR:
       rcheevos_server_error(event->server_error->api, event->server_error->error_message);
+      object1 = event->server_error;
       break;
    case RC_CLIENT_EVENT_DISCONNECTED:
       rcheevos_server_disconnected();
@@ -597,6 +619,9 @@ static void rcheevos_client_event_handler(const rc_client_event_t* event, rc_cli
       CHEEVOS_LOG(RCHEEVOS_TAG "Unsupported rc_client event %u\n", event->type);
 #endif
       break;
+   }
+   if (g_cheevos_event_callback) {
+      g_cheevos_event_callback(event->type, object1, object2);
    }
 }
 
@@ -1278,6 +1303,9 @@ static void rcheevos_show_game_placard(void)
 #endif
          runloop_msg_queue_push(msg, _len, 0, 3 * 60, false, NULL,
                MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
+      if (g_cheevos_event_callback) {
+         g_cheevos_event_callback(8888, game, &summary);
+      }
    }
 }
 
@@ -1552,7 +1580,7 @@ bool rcheevos_load(const void *data)
    else
    {
       rcheevos_locals.client = rc_client_create(rcheevos_client_read_memory, rcheevos_client_server_call);
-      rc_client_enable_logging(rcheevos_locals.client, RC_CLIENT_LOG_LEVEL_VERBOSE, rcheevos_client_log_message);
+      rc_client_enable_logging(rcheevos_locals.client, RC_CLIENT_LOG_LEVEL_NONE, rcheevos_client_log_message);
       rc_client_set_event_handler(rcheevos_locals.client, rcheevos_client_event_handler);
       rc_client_set_get_time_millisecs_function(rcheevos_locals.client, rcheevos_client_get_time_millisecs);
 
@@ -1647,4 +1675,8 @@ void rcheevos_change_disc(const char* new_disc_path, bool initial_disc)
       rc_client_begin_change_media(rcheevos_locals.client, new_disc_path,
          NULL, 0, rcheevos_client_change_media_callback, NULL);
    }
+}
+
+void rcheevos_reset_cdreader_hooks(void) {
+   rc_hash_reset_cdreader_hooks();
 }

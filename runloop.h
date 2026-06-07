@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include <boolean.h>
 #include <retro_inline.h>
@@ -306,6 +307,36 @@ struct runloop
 typedef struct runloop runloop_state_t;
 
 RETRO_BEGIN_DECLS
+
+//定义WFC状态变更回调
+typedef void (*WFCCallback)(bool);
+void wfc_status_register_callback(WFCCallback callback);
+
+//定义Shutdown通知
+typedef void (*ShutdownCallback)(void);
+void shutdown_register_callback(ShutdownCallback callback);
+
+//定义melonDS的布局信息
+void set_melonds_custom_layout(const char *layout);
+
+//定义WFC NDS信息
+void set_melonds_wfc_dns(const char *dns);
+
+//定义3DS的布局信息
+void set_azahar_custom_layout(const char *layout);
+
+//定义DeSmuME的布局信息
+void set_desmume_custom_layout(const char *layout);
+
+//定义PSP的自定义服务地址
+void set_psp_custom_server_address(const char *address);
+
+//定义PSP的自定义服务端口
+void set_psp_custom_server_port(const char *port);
+
+//定义日志回调
+typedef void (*LogCallback)(enum retro_log_level level, const char *fmt, va_list args);
+void log_register_callback(LogCallback callback);
 
 void runloop_path_fill_names(void);
 

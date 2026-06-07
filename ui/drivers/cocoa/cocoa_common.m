@@ -23,8 +23,10 @@
 #include <compat/apple_compat.h>
 
 #ifdef HAVE_COCOATOUCH
+#ifndef NO_GCDWEB
 #import "../../../pkg/apple/WebServer/GCDWebUploader/GCDWebUploader.h"
 #import "WebServer.h"
+#endif
 #ifdef HAVE_IOS_SWIFT
 #import "RetroArch-Swift.h"
 #endif
@@ -85,7 +87,12 @@ static CocoaView* g_instance;
 void *glkitview_init(void);
 void cocoa_file_load_with_detect_core(const char *filename);
 
+#ifdef NO_GCDWEB
+@interface CocoaView()<UIGestureRecognizerDelegate
+#else
 @interface CocoaView()<GCDWebUploaderDelegate, UIGestureRecognizerDelegate
+#endif
+
 #ifdef HAVE_IOS_TOUCHMOUSE
 ,EmulatorTouchMouseHandlerDelegate
 #endif
@@ -137,6 +144,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
    {
       view = [CocoaView new];
       nsview_set_ptr(view);
+#ifndef NO_ROOT_VIEW
 #if defined(IOS)
       view.displayLink = [CADisplayLink displayLinkWithTarget:view selector:@selector(step:)];
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 150000 || __TV_OS_VERSION_MAX_ALLOWED >= 150000
@@ -151,6 +159,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
          view.displayLink.preferredFrameRateRange = CAFrameRateRangeMake(60, 120, 120);
          [view.displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
       }
+#endif
 #endif
    }
    return view;
@@ -384,6 +393,54 @@ void cocoa_file_load_with_detect_core(const char *filename);
 
 #if TARGET_OS_IOS
 
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [super touchesBegan:touches withEvent:event];
+    [self handleTouchEvent:event];
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [super touchesMoved:touches withEvent:event];
+    [self handleTouchEvent:event];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [super touchesEnded:touches withEvent:event];
+    [self handleTouchEvent:event];
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [super touchesCancelled:touches withEvent:event];
+    [self handleTouchEvent:event];
+}
+
+- (void)handleTouchEvent:(UIEvent* )event {
+    if (event.type == UIEventTypeHover) {
+        return;
+    }
+    
+    NSArray *touches = event.allTouches.allObjects;
+    
+    unsigned i;
+    cocoa_input_data_t *apple = (cocoa_input_data_t*)input_state_get_ptr()->current_data;
+    float scale = cocoa_screen_get_native_scale();
+    
+    if (!apple) {
+        return;
+    }
+    
+    apple->touch_count = 0;
+    
+    for (i = 0; i < touches.count && (apple->touch_count < MAX_TOUCHES); i++) {
+       UITouch      *touch = [touches objectAtIndex:i];
+       CGPoint       coord = [touch locationInView:[touch view]];
+       if (touch.phase != UITouchPhaseEnded && touch.phase != UITouchPhaseCancelled)
+       {
+          apple->touches[apple->touch_count   ].screen_x = coord.x * scale;
+          apple->touches[apple->touch_count ++].screen_y = coord.y * scale;
+       }
+    }
+}
+
 #pragma mark UIDocumentPickerViewController
 
 -(void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentAtURL:(NSURL *)url
@@ -506,6 +563,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
 }
 
 -(BOOL)prefersHomeIndicatorAutoHidden { return YES; }
+#ifndef NO_ROOT_VIEW
 -(void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
 {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
@@ -576,6 +634,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
     [self.view bringSubviewToFront:self.helperBarView];
 #endif
 }
+#endif
 
 /* NOTE: This version runs on iOS6+. */
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations
@@ -627,11 +686,11 @@ void cocoa_file_load_with_detect_core(const char *filename);
 -(void)viewDidLoad {
     [super viewDidLoad];
 #if TARGET_OS_IOS
-    UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(showNativeMenu)];
-    swipe.numberOfTouchesRequired   = 4;
-    swipe.delegate                  = self;
-    swipe.direction                 = UISwipeGestureRecognizerDirectionDown;
-    [self.view addGestureRecognizer:swipe];
+//    UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(showNativeMenu)];
+//    swipe.numberOfTouchesRequired   = 4;
+//    swipe.delegate                  = self;
+//    swipe.direction                 = UISwipeGestureRecognizerDirectionDown;
+//    [self.view addGestureRecognizer:swipe];
 #ifdef HAVE_IOS_TOUCHMOUSE
     if (@available(iOS 13, *))
         [self setupMouseSupport];
@@ -690,8 +749,10 @@ void cocoa_file_load_with_detect_core(const char *filename);
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
+#ifndef NO_GCDWEB
     [[WebServer sharedInstance] startServers];
     [WebServer sharedInstance].webUploader.delegate = self;
+#endif
 }
 
 #if TARGET_OS_IOS && HAVE_IOS_TOUCHMOUSE
@@ -728,6 +789,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
 #endif
 
 #pragma mark GCDWebServerDelegate
+#ifndef NO_GCDWEB
 - (void)webServerDidCompleteBonjourRegistration:(GCDWebServer*)server
 {
     NSMutableString *servers = [[NSMutableString alloc] init];
@@ -768,6 +830,7 @@ void cocoa_file_load_with_detect_core(const char *filename);
     });
 #endif
 }
+#endif
 
 #endif
 

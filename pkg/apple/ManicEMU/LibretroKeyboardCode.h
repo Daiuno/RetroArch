@@ -1,0 +1,108 @@
+//
+//  LibretroKeyboardCode.h
+//  Libretro
+//
+//  Created by Daiuno on 2026/1/24.
+//  Copyright © 2026 Manic EMU. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+NS_ASSUME_NONNULL_BEGIN
+/**
+ "1" RETROK_1
+ "2" RETROK_2
+ "3" RETROK_3
+ "4" RETROK_4
+ "5" RETROK_5
+ "Q" RETROK_q
+ "W" RETROK_w
+ "E" RETROK_e
+ "R" RETROK_r
+ "T" RETROK_t
+ "A" RETROK_a
+ "S" RETROK_s
+ "D" RETROK_d
+ "F" RETROK_f
+ "G" RETROK_g
+ "Z" RETROK_z
+ "X" RETROK_x
+ "C" RETROK_c
+ "V" RETROK_v
+ "B" RETROK_b
+ "FN"  9000
+ "LSHIFT" RETROK_LSHIFT
+ "LCTRL" RETROK_LCTRL
+ "LALT" RETROK_LALT
+ "F1" RETROK_F1
+ "F2" RETROK_F2
+ "F3" RETROK_F3
+ "F4" RETROK_F4
+ "F5" RETROK_F5
+ "-" RETROK_MINUS
+ "=" RETROK_EQUALS
+ "/" RETROK_SLASH
+ "[" RETROK_LEFTBRACKET
+ "]" RETROK_RIGHTBRACKET
+ ";" RETROK_SEMICOLON
+ "~" RETROK_TILDE
+ ":" RETROK_COLON
+ "?" RETROK_QUESTION
+ "!" RETROK_EXCLAIM
+ "RSHIFT" RETROK_RSHIFT
+ "RCTRL" RETROK_RCTRL
+ "RALT" RETROK_RALT
+ "6" RETROK_6
+ "7" RETROK_7
+ "8" RETROK_8
+ "9" RETROK_9
+ "0" RETROK_0
+ "Y" RETROK_y
+ "U" RETROK_u
+ "I" RETROK_i
+ "O" RETROK_o
+ "P" RETROK_p
+ "H" RETROK_h
+ "J" RETROK_j
+ "K" RETROK_k
+ "L" RETROK_l
+ "'" RETROK_QUOTE
+ "N" RETROK_n
+ "M" RETROK_m
+ "," RETROK_COMMA
+ "." RETROK_PERIOD
+ "BKSPC" RETROK_BACKSPACE
+ "TAB" RETROK_TAB
+ "RETURN" RETROK_RETURN
+ "F6" RETROK_F6
+ "F7" RETROK_F7
+ "F8" RETROK_F8
+ "F9" RETROK_F9
+ "F10" RETROK_F10
+ "PAGEUP" RETROK_PAGEUP
+ "HOME" RETROK_HOME
+ "INS" RETROK_INSERT
+ "END" RETROK_END
+ "PAGEDWN" RETROK_PAGEDOWN
+ "F11" RETROK_F11
+ "UP" RETROK_UP
+ "F12" RETROK_F12
+ "DOWN" RETROK_LEFT
+ "LEFT" RETROK_DOWN
+ "RIGHT" RETROK_RIGHT
+ "DEL" RETROK_DELETE
+ "SPACE" RETROK_SPACE
+ "ESC" RETROK_ESCAPE
+ "RETURN" RETROK_RETURN
+ */
+
+@interface LibretroKeyboardCode : NSObject
+
+@property(assign, readonly) unsigned code;
+
++ (NSArray<NSString *> *)getAllKeyboarLabels;
++ (LibretroKeyboardCode *_Nullable)createCodeWithLabel:(NSString *_Nonnull)label;
+
+@end
+
+NS_ASSUME_NONNULL_END

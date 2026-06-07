@@ -225,6 +225,7 @@ enum joypad_driver_enum
    JOYPAD_QNX,
    JOYPAD_RWEBPAD,
    JOYPAD_MFI,
+   JOYPAD_MANIC,
    JOYPAD_NULL
 };
 
@@ -719,7 +720,7 @@ static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_QNX;
 #elif defined(EMSCRIPTEN)
 static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_RWEBPAD;
 #else
-static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_NULL;
+static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_MANIC;
 #endif
 
 #if defined(HAVE_V4L2)
@@ -1295,6 +1296,9 @@ const char *config_get_default_joypad(void)
       case JOYPAD_MFI:
          return "mfi";
       case JOYPAD_NULL:
+         break;
+      case JOYPAD_MANIC:
+         return "manic";
          break;
    }
 
@@ -5021,6 +5025,42 @@ const char *input_config_get_prefix(unsigned user, bool meta)
       return NULL;
    }
    return bind_user_prefix[user];
+}
+
+static const char *g_custom_save_dir = NULL;
+void set_custom_save_dir(const char *dir) {
+   g_custom_save_dir = dir;
+}
+
+const char* get_custom_save_dir(void) {
+   return g_custom_save_dir;
+}
+
+static const char *g_custom_save_ext = NULL;
+void set_custom_save_ext(const char *ext) {
+   g_custom_save_ext = ext;
+}
+
+const char* get_custom_save_ext(void) {
+   return g_custom_save_ext;
+}
+
+static bool g_enable_rumble = false;
+void set_enable_rumble(bool enable) {
+   g_enable_rumble = enable;
+}
+
+bool get_enable_rumble(void) {
+   return g_enable_rumble;
+}
+
+static bool g_is_libretro_going_to_stop = false;
+void set_libretro_is_going_to_stop(bool stop) {
+   g_is_libretro_going_to_stop = stop;
+}
+
+bool get_is_libretro_going_to_stop(void) {
+   return g_is_libretro_going_to_stop;
 }
 
 /**

@@ -326,6 +326,66 @@
 #define PERF_LOG_FMT "[PERF]: Avg (%s): %llu ticks, %llu runs.\n"
 #endif
 
+//定义WFC状态变更回调
+static WFCCallback g_wfc_status_callback = NULL;
+void wfc_status_register_callback(WFCCallback callback) {
+   g_wfc_status_callback = callback;
+}
+
+//定义Shutdown通知
+static ShutdownCallback g_shutdown_callback = NULL;
+void shutdown_register_callback(ShutdownCallback callback) {
+   g_shutdown_callback = callback;
+}
+
+//定义NDS的布局信息
+static const char *g_melonds_custom_layout = NULL;
+void set_melonds_custom_layout(const char *layout) {
+   free((void *)g_melonds_custom_layout);
+   g_melonds_custom_layout = layout ? strdup(layout) : layout;
+}
+
+//定义WFC NDS信息
+static const char *g_melonds_wfc_dns = NULL;
+void set_melonds_wfc_dns(const char *dns) {
+   free((void *)g_melonds_wfc_dns);
+   g_melonds_wfc_dns = dns ? strdup(dns) : NULL;
+}
+
+//定义3DS的布局信息
+static const char *g_azahar_custom_layout = NULL;
+void set_azahar_custom_layout(const char *layout) {
+   free((void *)g_azahar_custom_layout);
+   g_azahar_custom_layout = layout ? strdup(layout) : NULL;
+}
+
+//定义DeSmuME的布局信息
+static const char *g_desmume_custom_layout = NULL;
+void set_desmume_custom_layout(const char *layout) {
+   free((void *)g_desmume_custom_layout);
+   g_desmume_custom_layout = layout ? strdup(layout) : NULL;
+}
+
+//定义PSP的自定义服务地址
+static const char *g_psp_custom_server_address = NULL;
+void set_psp_custom_server_address(const char *address) {
+   free((void *)g_psp_custom_server_address);
+   g_psp_custom_server_address = address ? strdup(address) : NULL;
+}
+
+//定义PSP的自定义服务端口
+static const char *g_psp_custom_server_port = NULL;
+void set_psp_custom_server_port(const char *port) {
+   free((void *)g_psp_custom_server_port);
+   g_psp_custom_server_port = port ? strdup(port) : NULL;
+}
+
+//定义Shutdown通知
+static LogCallback g_log_callback = NULL;
+void log_register_callback(LogCallback callback) {
+   g_log_callback = callback;
+}
+
 static runloop_state_t runloop_state      = {0};
 
 /* GLOBAL POINTER GETTERS */
@@ -887,6 +947,14 @@ static void libretro_log_cb(
       enum retro_log_level level,
       const char *fmt, ...)
 {
+   /* 先调用自定义回调 */
+   if (g_log_callback) {
+      va_list vp_copy;
+      va_start(vp_copy, fmt);
+      g_log_callback(level, fmt, vp_copy);
+      va_end(vp_copy);
+   }
+   
    va_list vp;
    unsigned libretro_log_level = config_get_ptr()->uints.libretro_log_level;
 
@@ -1412,6 +1480,37 @@ bool runloop_environment_cb(unsigned cmd, void *data)
                runloop_st->flags |= RUNLOOP_FLAG_HAS_VARIABLE_UPDATE;
 #endif
             runloop_st->core_options->updated = false;
+            
+            //通过option的方式传递布局信息局限性太大了，只能这样破坏性的进行传递
+            if (g_melonds_custom_layout && string_is_equal(var->key, "melonds_custom_layout_config")) {
+               var->value = strdup(g_melonds_custom_layout);
+               break;
+            }
+            
+            if (g_melonds_wfc_dns && string_is_equal(var->key, "melonds_firmware_wfc_dns")) {
+               var->value = strdup(g_melonds_wfc_dns);
+               break;
+            }
+            
+            if (g_azahar_custom_layout && string_is_equal(var->key, "citra_custom_layout_config")) {
+               var->value = strdup(g_azahar_custom_layout);
+               break;
+            }
+            
+            if (g_desmume_custom_layout && string_is_equal(var->key, "desmume_custom_layout_config")) {
+               var->value = strdup(g_desmume_custom_layout);
+               break;
+            }
+            
+            if (g_psp_custom_server_address && string_is_equal(var->key, "ppsspp_change_pro_ad_hoc_server_address")) {
+               var->value = strdup(g_psp_custom_server_address);
+               break;
+            }
+            
+            if (g_psp_custom_server_port && string_is_equal(var->key, "ppsspp_port_offset")) {
+               var->value = strdup(g_psp_custom_server_port);
+               break;
+            }
 
             if (core_option_manager_get_idx(runloop_st->core_options,
                   var->key, &opt_idx))
@@ -1449,6 +1548,20 @@ bool runloop_environment_cb(unsigned cmd, void *data)
                RARCH_ERR("[Environ]: SET_VARIABLE: %s - %s.\n",
                      var->key, "Not implemented");
                return false;
+            }
+            
+            if (g_wfc_status_callback && string_is_equal(var->key, "melonds_wfc_status")) {
+               //NDS的wfc状态发生变化了
+               int wfc_status = atoi(var->value);
+               
+               /**
+                case 0: statusText = "Disconnected"; break;
+                case 1: statusText = "Authenticated"; break;
+                case 2: statusText = "Associated"; break;
+                default: statusText = "Invalid"; break;
+                */
+               g_wfc_status_callback(wfc_status == 2);
+               break;
             }
 
             /* Check whether key is valid */
@@ -1896,6 +2009,10 @@ bool runloop_environment_cb(unsigned cmd, void *data)
          /* This case occurs when a core (internally)
           * requests a shutdown event */
          RARCH_LOG("[Environ]: SHUTDOWN.\n");
+         
+         if (g_shutdown_callback) {
+            g_shutdown_callback();
+         }
 
          runloop_st->flags |= RUNLOOP_FLAG_CORE_SHUTDOWN_INITIATED
                             | RUNLOOP_FLAG_SHUTDOWN_INITIATED;
@@ -2533,6 +2650,13 @@ bool runloop_environment_cb(unsigned cmd, void *data)
          camera_st->cb                    = *cb;
          camera_st->active                = (cb->caps != 0);
          break;
+      }
+
+      case RETRO_ENVIRONMENT_SET_CAMERA_DEVICE:
+      {
+         bool *use_front = (bool*)data;
+         RARCH_LOG("[Environ]: SET_CAMERA_DEVICE (front: %d).\n", *use_front);
+         return driver_camera_switch(*use_front);
       }
 
       case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
@@ -4379,13 +4503,24 @@ void runloop_set_frame_limit(
                (av_info->timing.fps * fastforward_ratio));
 }
 
+/* 外部定义的自定义快进速率，来自 ui_cocoatouch.m */
+extern float get_custom_fastforward_ratio(void);
+
 float runloop_get_fastforward_ratio(
       settings_t *settings,
       struct retro_fastforwarding_override *fastmotion_override)
 {
+   /* 优先级1: 检查自定义快进速率（来自外部API调用） */
+   float custom_ratio = get_custom_fastforward_ratio();
+   if (custom_ratio > 0.0f)
+      return custom_ratio;
+   
+   /* 优先级2: 检查核心的 fastmotion_override */
    if (      fastmotion_override->fastforward
          && (fastmotion_override->ratio >= 0.0f))
       return fastmotion_override->ratio;
+   
+   /* 优先级3: 使用设置中的默认快进速率 */
    return settings->floats.fastforward_ratio;
 }
 
@@ -7992,10 +8127,11 @@ void runloop_path_set_redirect(settings_t *settings,
                   sizeof(new_savefile_dir));
 
             /* Append library_name to the save location */
+            const char *custom_save_dir = get_custom_save_dir();
             if (sort_savefiles_enable)
                fill_pathname_join(new_savefile_dir,
                   new_savefile_dir,
-                  sysinfo->library_name,
+                  (custom_save_dir == NULL ? sysinfo->library_name : ""),
                   sizeof(new_savefile_dir));
 
             /* If path doesn't exist, try to create it,
@@ -8087,11 +8223,14 @@ void runloop_path_set_redirect(settings_t *settings,
 
       if (savefile_is_dir)
       {
+         //适配PKSM
+         const char *custom_save_ext = get_custom_save_ext();
+         const char *custom_save_dir = get_custom_save_dir();
          fill_pathname_dir(runloop_st->name.savefile,
                            !string_is_empty(runloop_st->runtime_content_path_basename)
                            ? runloop_st->runtime_content_path_basename
-                           : sysinfo->library_name,
-                           FILE_PATH_SRM_EXTENSION,
+                           : (custom_save_dir == NULL ? sysinfo->library_name : ""),
+                           custom_save_ext == NULL ? FILE_PATH_SRM_EXTENSION : custom_save_ext,
                            sizeof(runloop_st->name.savefile));
          RARCH_LOG("[Overrides]: %s \"%s\".\n",
                    msg_hash_to_str(MSG_REDIRECTING_SAVEFILE_TO),

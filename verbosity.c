@@ -294,7 +294,7 @@ void RARCH_LOG_V(const char *tag, const char *fmt, va_list ap)
    int sz = vsnprintf(NULL, 0, fmt, ap) + 1;
    char buffer[sz]; /* TODO/FIXME - VLA - C89 backwards compatibility */
    vsnprintf(buffer, sz, fmt, ap);
-   os_log(OS_LOG_DEFAULT, "%s %s", tag_v, buffer);
+   os_log(OS_LOG_DEFAULT, "%{public}s %{public}s", tag_v, buffer);
 #else
    static aslclient asl_client;
    static int asl_initialized = 0;

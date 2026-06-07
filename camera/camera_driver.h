@@ -85,6 +85,16 @@ bool driver_camera_start(void);
 
 void driver_camera_stop(void);
 
+/**
+ * driver_camera_switch:
+ * @use_front_camera: If true, switch to front camera; if false, switch to back camera.
+ *
+ * Switches between front and back cameras if supported by the driver.
+ *
+ * Returns: true if the switch was successful, false otherwise.
+ **/
+bool driver_camera_switch(bool use_front_camera);
+
 bool camera_driver_find_driver(const char *prefix,
       bool verbosity_enabled);
 

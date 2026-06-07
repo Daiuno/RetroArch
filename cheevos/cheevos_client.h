@@ -31,6 +31,8 @@ void rcheevos_client_server_call(const rc_api_request_t* request,
 
 void rcheevos_get_user_agent(rcheevos_locals_t* locals, char* buffer, size_t len);
 
+void rcheevos_set_appversion(char* version);
+
 RETRO_END_DECLS
 
 #endif /* __RARCH_CHEEVOS_MENU_H */

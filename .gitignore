@@ -95,7 +95,6 @@ autoconfig
 config
 database
 overlays
-playlists
 states
 cheats
 thumbnails

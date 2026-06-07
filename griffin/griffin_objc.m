@@ -52,6 +52,7 @@
 #ifdef HAVE_MFI
 #include "../input/drivers_joypad/mfi_joypad.m"
 #endif
+#include "../input/drivers_joypad/manic_joypad.m"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include "../frontend/drivers/platform_darwin.m"
@@ -59,6 +60,10 @@
 
 #ifdef HAVE_COREAUDIO3
 #include "../audio/drivers/coreaudio3.m"
+#endif
+
+#if defined(HAVE_COREAUDIO) && defined(HAVE_MICROPHONE)
+#include "../audio/drivers_microphone/coreaudio_mic.m"
 #endif
 
 #ifdef HAVE_CORELOCATION

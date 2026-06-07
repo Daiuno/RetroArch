@@ -101,6 +101,68 @@ UINavigationControllerDelegate> {
 - (void)showGameView;
 - (void)supportOtherAudioSessions;
 
+
+@property (nonatomic, copy, nullable) NSString *gamePath;
+@property (nonatomic, copy, nullable) NSString *corePath;
+@property (nonatomic, copy, nullable) NSString *workspace;
+
+- (void)sendEvent:(UIEvent * _Nonnull)event;
+- (void)startWithCustomSaveDir:(NSString *_Nullable)customSaveDir;
+- (void)pause;
+- (void)resume;
+- (void)stop;
+- (BOOL)loadGame:(NSString *_Nonnull)gamePath corePath:(NSString *_Nonnull)corePath completion:(void(^ _Nullable)(NSDictionary *_Nullable))completion;
+- (void)loadCoreWithoutContent:(NSString *_Nonnull)corePath;
+- (void)loadCoreWithoutRunning:(NSString *_Nonnull)corePath;
+- (NSArray<id> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath;
+- (void)pressButton:(unsigned)button playerIndex:(unsigned)playerIndex;
+- (void)releaseButton:(unsigned)button playerIndex:(unsigned)playerIndex;
+- (void)moveStick:(BOOL)isLeft x:(CGFloat)x y:(CGFloat)y playerIndex:(unsigned)playerIndex;
+- (void)mute:(BOOL)mute;
+- (void)snapshot:(void(^ _Nullable)(UIImage *_Nullable image))completion;
+- (BOOL)saveState:(void(^ _Nullable)(NSString *_Nullable path))completion;
+- (BOOL)loadState:(NSString *_Nonnull)path;
+- (void)fastForward:(float)rate;
+- (void)reload;
+- (void)reloadByKeepState:(BOOL)keepState;
+- (void)updatePSPCheat:(NSString *_Nonnull)cheatCode cheatFilePath:(NSString *_Nonnull)cheatFilePath reloadGame:(BOOL)reloadGame;
+- (void)updateCoreConfig:(NSString *_Nonnull)coreName key:(NSString *_Nonnull)key value:(NSString *_Nonnull)value reload:(BOOL)reload;
+- (void)updateCoreConfig:(NSString *_Nonnull)coreName configs:(NSDictionary<NSString*, NSString*> *_Nullable)configs reload:(BOOL)reload;
+- (void)updateCoreConfig:(NSString *_Nonnull)coreName content:(NSString *_Nullable)content reload:(BOOL)reload;
+- (void)updateRunningCoreConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs flush:(BOOL)flush;
+- (void)updateLibretroConfig:(NSString *_Nonnull)key value:(NSString *_Nonnull)value;
+- (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs;
+- (BOOL)setShaderWith:(NSString *_Nullable)path;
+- (void)appendShader:(NSString *_Nonnull)path prepend:(BOOL)prepend;
+- (id _Nullable)loadParameters;
+- (void)updateParameterWith:(NSString *_Nonnull)identifier
+                      value:(float)value
+               changingPath:(NSString *_Nonnull)changingPath;
+- (void)addCheatCode:(NSString *_Nonnull)code index:(unsigned)index enable:(BOOL)enable;
+- (void)resetCheatCode;
+- (void)setRespectSilentMode:(BOOL)respect;
+- (NSString * _Nullable)coreConfigValue:(NSString * _Nonnull)coreName key:(NSString * _Nonnull)key;
+- (NSString * _Nullable)libretroConfigValue:(NSString * _Nonnull)key;
+- (void)setDiskIndex:(unsigned)index delay:(BOOL)delay;
+- (void)setDiskIndex2:(unsigned)index;
+- (id _Nullable)getDiskInfo;
+- (BOOL)insertDisk:(NSString *_Nonnull)path;
+- (void)setPSXAnalog:(BOOL)isAnalog;
+- (void)setReloadDelay:(double)delay;
+- (void)turnOffHardcode;
+- (void)resetRetroAchievements;
+- (void)setCustomSaveExtension:(NSString *_Nullable)customSaveExtension;
+- (void)setEnableRumble:(BOOL)enable;
+- (BOOL)getSensorEnable:(int)playerIndex;
+- (void)sendTouchEventX:(CGFloat)x y:(CGFloat)y;
+- (void)releaseTouchEvent;
+- (void)sendMultiTouchEvent:(NSArray<NSDictionary *> *)points;
+- (NSString *_Nullable)getCoreConfigs:(NSString *_Nonnull)coreName;
+- (void)updateFBNeoCheatCode:(NSArray<NSString *> *_Nonnull)keys enable:(BOOL)enable;
+- (void)setFastforwardFrameSkip:(BOOL)frameSkip;
+- (void)loadAmiibo:(NSString *_Nonnull)path;
+- (BOOL)isSearchingAmiibo;
+- (void)setFullScreen:(BOOL)isFullScreen;
 @end
 
 #else

@@ -38,9 +38,9 @@
 #import <CoreMotion/CoreMotion.h>
 static CMMotionManager *motionManager;
 #endif
-#ifdef HAVE_MFI
+
 #import <GameController/GameController.h>
-#endif
+
 
 #if TARGET_OS_IPHONE
 #define HIDKEY(X) X
@@ -734,28 +734,27 @@ static uint64_t cocoa_input_get_capabilities(void *data)
       | (1 << RETRO_DEVICE_ANALOG);
 }
 
+static uint64_t g_input_sensor_enable = 0;
 static bool cocoa_input_set_sensor_state(void *data, unsigned port,
       enum retro_sensor_action action, unsigned rate)
 {
+    
    if (   (action != RETRO_SENSOR_ACCELEROMETER_ENABLE)
        && (action != RETRO_SENSOR_ACCELEROMETER_DISABLE)
        && (action != RETRO_SENSOR_GYROSCOPE_ENABLE)
        && (action != RETRO_SENSOR_GYROSCOPE_DISABLE))
       return false;
 
-#ifdef HAVE_MFI
-   if (@available(iOS 14.0, macOS 11.0, tvOS 14.0, *))
+   g_input_sensor_enable &= ~(1 << port);
+   
+    if (@available(iOS 14.0, macOS 11.0, tvOS 14.0, *))
    {
       for (GCController *controller in [GCController controllers])
       {
          if (!controller || controller.playerIndex != port)
             continue;
          if (!controller.motion)
-            break;
-         if (action == RETRO_SENSOR_ACCELEROMETER_ENABLE && !controller.motion.hasGravityAndUserAcceleration)
-            break;
-         if (action == RETRO_SENSOR_GYROSCOPE_ENABLE && !controller.motion.hasAttitudeAndRotationRate)
-            break;
+             continue;
          if (controller.motion.sensorsRequireManualActivation)
          {
             /* This is a bug, we assume if you turn on/off either
@@ -766,11 +765,8 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
             else
                controller.motion.sensorsActive = NO;
          }
-         /* no such thing as update interval for GCController? */
-         return true;
       }
    }
-#endif
 
 #ifdef HAVE_COREMOTION
    if (port != 0)
@@ -791,7 +787,7 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
       if (motionManager.deviceMotionActive)
          [motionManager stopDeviceMotionUpdates];
    }
-
+    g_input_sensor_enable |= (1 << port);
    return true;
 #else
    return false;
@@ -800,7 +796,7 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
 
 static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id)
 {
-#ifdef HAVE_MFI
+    //如果手柄支持陀螺仪 优先使用手柄的传感器
    if (@available(iOS 14.0, macOS 11.0, tvOS 14.0, *))
    {
       for (GCController *controller in [GCController controllers])
@@ -808,7 +804,9 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
          if (!controller || controller.playerIndex != port)
             continue;
          if (!controller.motion)
-            break;
+             continue;
+        if (!controller.motion.sensorsActive)
+            continue;
          switch (id)
          {
             case RETRO_SENSOR_ACCELEROMETER_X:
@@ -826,7 +824,6 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
          }
       }
    }
-#endif
 
 #ifdef HAVE_COREMOTION
    if (port == 0 && motionManager && motionManager.deviceMotionActive)
@@ -889,6 +886,10 @@ static void cocoa_input_grab_mouse(void *data, bool state)
       [[CocoaView get] setNeedsUpdateOfPrefersPointerLocked];
 }
 #endif
+
+bool input_get_sensor_enable(int port) {
+    return (g_input_sensor_enable & (1 << port)) != 0;
+}
 
 input_driver_t input_cocoa = {
    cocoa_input_init,

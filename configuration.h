@@ -598,6 +598,8 @@ typedef struct settings
 
       char browse_url[4096];      /* TODO/FIXME - check size */
       char path_stream_url[8192]; /* TODO/FIXME - check size */
+      
+      char custom_save_ext[32]; //自定义存档后缀
    } paths;
 
 
@@ -1357,6 +1359,21 @@ void input_config_parse_mouse_button(
       const char *btn, void *bind_data);
 
 const char *input_config_get_prefix(unsigned user, bool meta);
+
+//设置自定义存档路径
+void set_custom_save_dir(const char *dir);
+const char* get_custom_save_dir(void);
+
+void set_custom_save_ext(const char *ext);
+const char* get_custom_save_ext(void);
+
+//设置是否允许Rumble
+void set_enable_rumble(bool enable);
+bool get_enable_rumble(void);
+
+//设置Libretro是否将要停止
+void set_libretro_is_going_to_stop(bool stop);
+bool get_is_libretro_going_to_stop(void);
 
 RETRO_END_DECLS
 

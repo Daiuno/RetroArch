@@ -1220,6 +1220,17 @@ enum retro_mod
 #define RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE (26 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 
 /**
+ * Switches the active camera device.
+ *
+ * @param[in] data <tt>bool *</tt>.
+ * Pointer to a boolean value indicating which camera to use.
+ * If true, switch to front camera; if false, switch to back camera.
+ * @returns \c true if the switch was successful.
+ * @note This is a custom extension, not part of the standard libretro API.
+ */
+#define RETRO_ENVIRONMENT_SET_CAMERA_DEVICE (80 | RETRO_ENVIRONMENT_EXPERIMENTAL)
+
+/**
  * Gets an interface that the core can use for cross-platform logging.
  * Certain platforms don't have a console or <tt>stderr</tt>,
  * or they have their own preferred logging methods.

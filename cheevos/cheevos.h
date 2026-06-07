@@ -25,6 +25,10 @@
 
 RETRO_BEGIN_DECLS
 
+//定义事件回调
+typedef void (*CheevosEventCallback)(uint32_t, void*, void*);
+void cheevos_event_register_callback(CheevosEventCallback callback);
+
 bool rcheevos_load(const void *data);
 void rcheevos_change_disc(const char* new_disc_path, bool initial_disc);
 
@@ -61,6 +65,8 @@ int rcheevos_get_game_badge_url(char *s, size_t len);
 uintptr_t rcheevos_get_badge_texture(const char* badge, bool locked, bool download_if_missing);
 
 uint8_t* rcheevos_patch_address(unsigned address);
+
+void rcheevos_reset_cdreader_hooks(void);
 
 RETRO_END_DECLS
 

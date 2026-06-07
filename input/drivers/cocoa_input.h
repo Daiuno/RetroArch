@@ -56,4 +56,6 @@ typedef struct
    bool mouse_grabbed;
 } cocoa_input_data_t;
 
+bool input_get_sensor_enable(int port);
+
 #endif

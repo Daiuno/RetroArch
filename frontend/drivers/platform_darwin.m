@@ -123,7 +123,7 @@ static void CFSearchPathForDirectoriesInDomains(
 #if TARGET_OS_TV
    NSSearchPathDirectory dir = NSCachesDirectory;
 #else
-   NSSearchPathDirectory dir = NSDocumentDirectory;
+   NSSearchPathDirectory dir = NSLibraryDirectory;
 #endif
 #if __has_feature(objc_arc)
    CFStringRef array_val     = (__bridge CFStringRef)[
@@ -375,7 +375,7 @@ static void frontend_darwin_get_env(int *argc, char *argv[],
 #else
    CFSearchPathForDirectoriesInDomains(documents_dir_buf, sizeof(documents_dir_buf));
    path_resolve_realpath(documents_dir_buf, sizeof(documents_dir_buf), true);
-   strlcat(documents_dir_buf, "/RetroArch", sizeof(documents_dir_buf));
+   strlcat(documents_dir_buf, "/Libretro", sizeof(documents_dir_buf));
    /* iOS and tvOS are going to put everything in the documents dir */
    strncpy(application_data, documents_dir_buf, sizeof(application_data));
 #endif
@@ -390,7 +390,13 @@ static void frontend_darwin_get_env(int *argc, char *argv[],
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_PLAYLIST], documents_dir_buf, "playlists", sizeof(g_defaults.dirs[DEFAULT_DIR_PLAYLIST]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_RECORD_OUTPUT], documents_dir_buf, "records", sizeof(g_defaults.dirs[DEFAULT_DIR_RECORD_OUTPUT]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_RECORD_CONFIG], documents_dir_buf, "records_config", sizeof(g_defaults.dirs[DEFAULT_DIR_RECORD_CONFIG]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], documents_dir_buf, "saves", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+    //强制将saves设置到~/Documents
+   const char *custom_save_dir = get_custom_save_dir();
+   if (custom_save_dir) {
+       fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], custom_save_dir, "/", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+   } else {
+       fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask,      YES).firstObject.UTF8String, "/", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+   }
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SCREENSHOT], documents_dir_buf, "screenshots", sizeof(g_defaults.dirs[DEFAULT_DIR_SCREENSHOT]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], documents_dir_buf, "states", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SYSTEM], documents_dir_buf, "system", sizeof(g_defaults.dirs[DEFAULT_DIR_SYSTEM]));

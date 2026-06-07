@@ -276,6 +276,7 @@ input_device_driver_t *joypad_drivers[] = {
 #ifdef HAVE_MFI
    &mfi_joypad,
 #endif
+   &manic_joypad,
 #ifdef DJGPP
    &dos_joypad,
 #endif
