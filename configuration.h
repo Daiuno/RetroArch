@@ -1336,6 +1336,9 @@ void retroarch_config_deinit(void);
 
 settings_t *config_get_ptr(void);
 
+/* Write the runtime settings in the current process according to the key/value in retroarch.cfg, without writing to a file. */
+bool config_set_runtime_value(const char *key, const char *value);
+
 #ifdef HAVE_LAKKA
 const char *config_get_all_timezones(void);
 void config_set_timezone(char *timezone);

@@ -403,6 +403,21 @@ bool state_manager_frame_is_reversed(void)
 #endif
 }
 
+#ifdef HAVE_REWIND
+/* The "virtual rewind button" state injected by the frontend (e.g., iOS App) is equivalent to holding down the RARCH_REWIND hotkey. */
+static bool runloop_rewind_hold = false;
+
+void runloop_set_rewind_hold(bool hold)
+{
+   runloop_rewind_hold = hold;
+}
+
+bool runloop_get_rewind_hold(void)
+{
+   return runloop_rewind_hold;
+}
+#endif
+
 content_state_t *content_state_get_ptr(void)
 {
    return &runloop_state.content_st;
@@ -6320,7 +6335,8 @@ static enum runloop_state_enum runloop_check_state(
          char s[128];
          bool rewinding      = false;
          static bool old_rewind_pressed = false;
-         bool rewind_pressed = BIT256_GET(current_bits, RARCH_REWIND);
+         bool rewind_pressed = BIT256_GET(current_bits, RARCH_REWIND)
+               || runloop_rewind_hold;
          unsigned t          = 0;
 
          s[0]                = '\0';

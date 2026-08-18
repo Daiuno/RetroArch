@@ -550,6 +550,8 @@ enum
 
 #if TARGET_OS_IOS
 @interface RetroArch_iOS () <MXMetricManagerSubscriber, UIPointerInteractionDelegate>
+- (NSArray<CoreOptionCategory *> *_Nullable)collectCoreOptionCategories;
+- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath;
 @end
 #endif
 
@@ -1015,6 +1017,8 @@ static BOOL RespectSilentMode = false;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAudioSessionInterruption:) name:AVAudioSessionInterruptionNotification object:[AVAudioSession sharedInstance]];
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!LibretroInitial)
+            return;
         command_event(CMD_EVENT_AUDIO_START, NULL);
     });
     
@@ -1036,6 +1040,15 @@ static BOOL RespectSilentMode = false;
     if (!LibretroInitial) { return; }
     command_event(CMD_EVENT_PAUSE, NULL);
     rarch_stop_draw_observer();
+}
+
+- (BOOL)isPaused {
+    BOOL isPause = NO;
+    uint32_t runloop_flags = runloop_get_flags();
+    if (runloop_flags & RUNLOOP_FLAG_PAUSED) {
+        isPause = YES;
+    }
+    return isPause;
 }
 
 - (void)stop {
@@ -1149,124 +1162,190 @@ static BOOL RespectSilentMode = false;
     task_push_load_new_core(corePath.UTF8String, NULL, &content_info, CORE_TYPE_PLAIN, NULL, NULL);
 }
 
-- (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath {
-    BOOL needToShutdown = false;
-    if (!LibretroInitial) {
-        needToShutdown = true;
-        [self startWithCustomSaveDir:nil];
-        // loadCoreWithoutRunning 内部用 task_push_load_new_core，
-        // 只触发 CMD_EVENT_LOAD_CORE → libretro_get_system_info（临时加载，带 IGNORE_ENVIRONMENT_CB），
-        // 不会执行 retro_set_environment(runloop_environment_cb) + retro_init()，
-        // 因此 core_options 不会被填充。
-        // 必须用 loadCoreWithoutContent: 走完整的 content_load 流程。
-        [self loadCoreWithoutContent:corePath];
-    }
-    
-    NSArray<CoreOptionCategory *> *result = nil;
-
+/// 从当前 runloop 的 core_options 组装 UI 数据。字符串已在 manager 内 strdup，dylib 关闭后仍可读。
+- (NSArray<CoreOptionCategory *> *_Nullable)collectCoreOptionCategories {
     runloop_state_t *runloop_st = runloop_state_get_ptr();
     core_option_manager_t *opt = runloop_st ? runloop_st->core_options : NULL;
+    if (!opt || opt->size == 0)
+        return nil;
 
-    if (opt && opt->size > 0) {
-        NSMutableArray<CoreOptionCategory *> *categories = [NSMutableArray array];
-        // 无分类选项（category_key 为空）暂存
-        NSMutableArray<CoreOption *> *uncategorizedOptions = [NSMutableArray array];
-        // 按 category_key 归类的选项
-        NSMutableDictionary<NSString *, NSMutableArray<CoreOption *> *> *categoryOptionsMap = [NSMutableDictionary dictionary];
+    NSMutableArray<CoreOptionCategory *> *categories = [NSMutableArray array];
+    NSMutableArray<CoreOption *> *uncategorizedOptions = [NSMutableArray array];
+    NSMutableDictionary<NSString *, NSMutableArray<CoreOption *> *> *categoryOptionsMap = [NSMutableDictionary dictionary];
 
-        for (size_t i = 0; i < opt->size; i++) {
-            struct core_option *option = &opt->opts[i];
-            if (!option->key)
-                continue;
+    for (size_t i = 0; i < opt->size; i++) {
+        struct core_option *option = &opt->opts[i];
+        if (!option->key)
+            continue;
 
-            CoreOption *coreOption        = [[CoreOption alloc] init];
-            coreOption.key                = @(option->key);
-            coreOption.index              = (NSInteger)option->index;
-            coreOption.visible            = core_option_manager_get_visible(opt, i);
+        CoreOption *coreOption        = [[CoreOption alloc] init];
+        coreOption.key                = @(option->key);
+        coreOption.index              = (NSInteger)option->index;
+        coreOption.visible            = core_option_manager_get_visible(opt, i);
 
-            BOOL isCategorized            = option->category_key != NULL;
-            const char *desc              = core_option_manager_get_desc(opt, i, isCategorized);
-            coreOption.desc               = desc ? @(desc) : @"";
+        BOOL isCategorized            = option->category_key != NULL;
+        const char *desc              = core_option_manager_get_desc(opt, i, isCategorized);
+        coreOption.desc               = desc ? @(desc) : @"";
 
-            const char *info              = core_option_manager_get_info(opt, i, isCategorized);
-            coreOption.info               = info ? @(info) : @"";
+        const char *info              = core_option_manager_get_info(opt, i, isCategorized);
+        coreOption.info               = info ? @(info) : @"";
 
-            const char *val               = core_option_manager_get_val(opt, i);
-            coreOption.value              = val ? @(val) : @"";
+        const char *val               = core_option_manager_get_val(opt, i);
+        coreOption.value              = val ? @(val) : @"";
 
-            const char *valLabel          = core_option_manager_get_val_label(opt, i);
-            coreOption.label              = valLabel ? @(valLabel) : @"";
+        const char *valLabel          = core_option_manager_get_val_label(opt, i);
+        coreOption.label              = valLabel ? @(valLabel) : @"";
 
-            // 收集所有可选值及其标签
-            NSMutableArray<Options *> *optItems = [NSMutableArray array];
-            if (option->vals) {
-                for (size_t j = 0; j < option->vals->size; j++) {
-                    const char *v = option->vals->elems[j].data;
-                    const char *l = (option->val_labels && j < option->val_labels->size)
-                                        ? option->val_labels->elems[j].data : NULL;
-                    Options *opt_item  = [[Options alloc] init];
-                    opt_item.value = v ? @(v) : @"";
-                    opt_item.label = l ? @(l) : (v ? @(v) : @"");
-                    [optItems addObject:opt_item];
-                }
-            }
-            coreOption.options = [optItems copy];
-
-            if (option->category_key) {
-                NSString *catKey = @(option->category_key);
-                NSMutableArray<CoreOption *> *catOpts = categoryOptionsMap[catKey];
-                if (!catOpts) {
-                    catOpts = [NSMutableArray array];
-                    categoryOptionsMap[catKey] = catOpts;
-                }
-                [catOpts addObject:coreOption];
-            } else {
-                [uncategorizedOptions addObject:coreOption];
+        NSMutableArray<Options *> *optItems = [NSMutableArray array];
+        if (option->vals) {
+            for (size_t j = 0; j < option->vals->size; j++) {
+                const char *v = option->vals->elems[j].data;
+                const char *l = (option->val_labels && j < option->val_labels->size)
+                                    ? option->val_labels->elems[j].data : NULL;
+                Options *opt_item  = [[Options alloc] init];
+                opt_item.value = v ? @(v) : @"";
+                opt_item.label = l ? @(l) : (v ? @(v) : @"");
+                [optItems addObject:opt_item];
             }
         }
+        coreOption.options = [optItems copy];
 
-        // 无分类选项作为第一个 category（title/desc 均为空）
-        if (uncategorizedOptions.count > 0) {
-            CoreOptionCategory *cat = [[CoreOptionCategory alloc] init];
-            cat.title   = @"";
-            cat.desc    = @"";
-            cat.info    = @"";
-            cat.index   = 0;
-            cat.options = [uncategorizedOptions copy];
-            cat.visible = YES;
-            [categories addObject:cat];
-        }
-
-        // 按 cats 数组顺序构建有名分类
-        for (size_t i = 0; i < opt->cats_size; i++) {
-            struct core_category *cat_def = &opt->cats[i];
-            if (!cat_def->key)
-                break;
-
-            NSString *catKey = @(cat_def->key);
+        if (option->category_key) {
+            NSString *catKey = @(option->category_key);
             NSMutableArray<CoreOption *> *catOpts = categoryOptionsMap[catKey];
-
-            CoreOptionCategory *cat = [[CoreOptionCategory alloc] init];
-            const char *catDesc     = core_option_manager_get_category_desc(opt, cat_def->key);
-            cat.title               = catDesc ? @(catDesc) : catKey;
-            cat.desc                = catKey; // key 作为唯一标识符
-            const char *catInfo     = core_option_manager_get_category_info(opt, cat_def->key);
-            cat.info                = catInfo ? @(catInfo) : @"";
-            cat.index               = (NSInteger)categories.count;
-            cat.options             = catOpts ? [catOpts copy] : @[];
-            cat.visible             = core_option_manager_get_category_visible(opt, cat_def->key);
-            [categories addObject:cat];
+            if (!catOpts) {
+                catOpts = [NSMutableArray array];
+                categoryOptionsMap[catKey] = catOpts;
+            }
+            [catOpts addObject:coreOption];
+        } else {
+            [uncategorizedOptions addObject:coreOption];
         }
-
-        if (categories.count > 0)
-            result = [categories copy];
     }
 
-    if (needToShutdown) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self stop];
-        });
+    if (uncategorizedOptions.count > 0) {
+        CoreOptionCategory *cat = [[CoreOptionCategory alloc] init];
+        cat.title   = @"";
+        cat.desc    = @"";
+        cat.info    = @"";
+        cat.index   = 0;
+        cat.options = [uncategorizedOptions copy];
+        cat.visible = YES;
+        [categories addObject:cat];
     }
+
+    for (size_t i = 0; i < opt->cats_size; i++) {
+        struct core_category *cat_def = &opt->cats[i];
+        if (!cat_def->key)
+            break;
+
+        NSString *catKey = @(cat_def->key);
+        NSMutableArray<CoreOption *> *catOpts = categoryOptionsMap[catKey];
+
+        CoreOptionCategory *cat = [[CoreOptionCategory alloc] init];
+        const char *catDesc     = core_option_manager_get_category_desc(opt, cat_def->key);
+        cat.title               = catDesc ? @(catDesc) : catKey;
+        cat.desc                = catKey;
+        const char *catInfo     = core_option_manager_get_category_info(opt, cat_def->key);
+        cat.info                = catInfo ? @(catInfo) : @"";
+        cat.index               = (NSInteger)categories.count;
+        cat.options             = catOpts ? [catOpts copy] : @[];
+        cat.visible             = core_option_manager_get_category_visible(opt, cat_def->key);
+        [categories addObject:cat];
+    }
+
+    return categories.count > 0 ? [categories copy] : nil;
+}
+
+/// 仅加载核心动态库并调用 retro_set_environment（必要时再 retro_init），
+/// 让 SET_CORE_OPTIONS* / SET_VARIABLES 写入 runloop。
+/// 不走 content_load / retro_load_game，因此不要求 supports_no_game。
+- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath {
+    if (corePath.length == 0)
+        return NO;
+
+    const char *path = corePath.UTF8String;
+    path_set(RARCH_PATH_CORE, path);
+
+    dylib_t lib = dylib_load(path);
+    if (!lib)
+        return NO;
+
+    void (*get_system_info)(struct retro_system_info *) =
+        (void (*)(struct retro_system_info *))dylib_proc(lib, "retro_get_system_info");
+    void (*set_environment)(retro_environment_t) =
+        (void (*)(retro_environment_t))dylib_proc(lib, "retro_set_environment");
+    void (*core_init)(void) =
+        (void (*)(void))dylib_proc(lib, "retro_init");
+    void (*core_deinit)(void) =
+        (void (*)(void))dylib_proc(lib, "retro_deinit");
+
+    if (!get_system_info || !set_environment) {
+        dylib_close(lib);
+        return NO;
+    }
+
+    struct retro_system_info info;
+    memset(&info, 0, sizeof(info));
+    get_system_info(&info);
+
+    // library_name 用于生成 config/CoreName/CoreName.opt 路径
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    runloop_st->flags &= ~RUNLOOP_FLAG_IGNORE_ENVIRONMENT_CB;
+    if (info.library_name) {
+        strlcpy(runloop_st->current_library_name, info.library_name,
+                sizeof(runloop_st->current_library_name));
+        runloop_st->system.info.library_name = runloop_st->current_library_name;
+    }
+    if (info.library_version) {
+        strlcpy(runloop_st->current_library_version, info.library_version,
+                sizeof(runloop_st->current_library_version));
+        runloop_st->system.info.library_version = runloop_st->current_library_version;
+    }
+
+    // DeSmuME 等核心在 set_environment 里就会 SET_CORE_OPTIONS
+    set_environment(runloop_environment_cb);
+
+    BOOL did_init = NO;
+    // DOSBox-pure 等核心只在 retro_init 里调用 set_variables() → SET_CORE_OPTIONS_V2
+    if (!(runloop_st->core_options && runloop_st->core_options->size > 0) && core_init) {
+        core_init();
+        did_init = YES;
+    }
+
+    BOOL ok = runloop_st->core_options && runloop_st->core_options->size > 0;
+    if (did_init && core_deinit)
+        core_deinit();
+    dylib_close(lib);
+    return ok;
+}
+
+- (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath {
+    if (corePath.length == 0)
+        return nil;
+
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    BOOL coreRunning = LibretroInitial && runloop_st
+        && (runloop_st->flags & RUNLOOP_FLAG_CORE_RUNNING);
+
+    // 游戏已在运行：直接读当前核心的选项表，不能再加载别的核心
+    if (coreRunning)
+        return [self collectCoreOptionCategories];
+
+    // 残留的无内容前端（例如上次探测未及时 stop）先清掉，避免 dummy core 干扰
+    if (LibretroInitial)
+        [self stop];
+
+    [self startWithCustomSaveDir:nil];
+
+    // 1) 轻量探测：set_environment（+ 必要时 retro_init），不加载内容
+    // 2) 仍为空则回退 contentless 加载，覆盖只在完整 CORE_INIT 里注册选项的 no-game 核心
+    if (![self probeCoreOptionsAtPath:corePath])
+        [self loadCoreWithoutContent:corePath];
+
+    NSArray<CoreOptionCategory *> *result = [self collectCoreOptionCategories];
+
+    [self stop];
     return result;
 }
 
@@ -1631,6 +1710,41 @@ float get_custom_fastforward_ratio(void) {
     return g_custom_fastforward_ratio;
 }
 
+- (void)setRewindEnable:(BOOL)enable
+            granularity:(unsigned)granularity
+           bufferSizeMB:(unsigned)bufferSizeMB
+       bufferSizeStepMB:(unsigned)bufferSizeStepMB
+                   mute:(BOOL)mute {
+#ifdef HAVE_REWIND
+    settings_t *settings = config_get_ptr();
+    if (!settings) {
+        return;
+    }
+
+    if (enable) {
+        configuration_set_uint(settings, settings->uints.rewind_granularity, granularity ? granularity : 1);
+        configuration_set_uint(settings, settings->sizes.rewind_buffer_size, (size_t)bufferSizeMB * 1024 * 1024);
+        configuration_set_uint(settings, settings->uints.rewind_buffer_size_step, bufferSizeStepMB);
+        configuration_set_bool(settings, settings->bools.audio_rewind_mute, mute);
+        configuration_set_bool(settings, settings->bools.rewind_enable, true);
+        // 先 DEINIT 再 INIT：既能在已开启时重建缓冲区使新参数生效，
+        // 也能清掉上次初始化失败残留的 INIT_ATTEMPTED 标志
+        command_event(CMD_EVENT_REWIND_DEINIT, NULL);
+        command_event(CMD_EVENT_REWIND_INIT, NULL);
+    } else {
+        runloop_set_rewind_hold(false);
+        configuration_set_bool(settings, settings->bools.rewind_enable, false);
+        command_event(CMD_EVENT_REWIND_DEINIT, NULL);
+    }
+#endif
+}
+
+- (void)setRewind:(BOOL)rewinding {
+#ifdef HAVE_REWIND
+    runloop_set_rewind_hold(rewinding);
+#endif
+}
+
 - (void)reload {
     [self reloadByKeepState: NO];
 }
@@ -1839,6 +1953,17 @@ static NSString *_Nullable needToLoadStatePath = nil;
     }];
 }
 
+- (void)updateRuningLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {
+    if (!LibretroInitial || configs.count == 0)
+        return;
+
+    [configs enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
+        if (key.length == 0)
+            return;
+        config_set_runtime_value(key.UTF8String, value.UTF8String ?: "");
+    }];
+}
+
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {
     if (configs.count == 0) return;
     
@@ -1984,11 +2109,17 @@ static NSString *_Nullable needToLoadStatePath = nil;
     }
     if (path && [[NSFileManager defaultManager] fileExistsAtPath:path]) {
         settings->bools.video_shader_enable = true;
-        video_shader_toggle(settings, true);
+#ifdef HAVE_MENU
+        if (menu_shader_get())
+#endif
+            video_shader_toggle(settings, true);
         return set_shader_preset(path.UTF8String);
     } else {
         settings->bools.video_shader_enable = false;
-        video_shader_toggle(settings, true);
+#ifdef HAVE_MENU
+        if (menu_shader_get())
+#endif
+            video_shader_toggle(settings, true);
         return NO;
     }
 }
@@ -2076,6 +2207,7 @@ bool set_shader_preset(const char * _Nullable preset_path)
         shaderParam.identifier = [NSString stringWithUTF8String:param->id];
         shaderParam.desc = [NSString stringWithUTF8String:param->desc];
         shaderParam.current = param->current;
+        shaderParam.initial = param->initial;
         shaderParam.minimum = param->minimum;
         shaderParam.maximum = param->maximum;
         shaderParam.step = param->step;
@@ -2161,18 +2293,12 @@ bool set_shader_preset(const char * _Nullable preset_path)
 - (void)setDiskIndex:(unsigned)index delay:(BOOL)delay {
     command_event(CMD_EVENT_DISK_EJECT_TOGGLE, NULL);
     if (delay) {
-        BOOL isPause = NO;
-        uint32_t runloop_flags = runloop_get_flags();
-        if (runloop_flags & RUNLOOP_FLAG_PAUSED) {
-            isPause = YES;
-        }
-        
         [self resume];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             unsigned mutableIndex = index;
             command_event(CMD_EVENT_DISK_INDEX, &mutableIndex);
             command_event(CMD_EVENT_DISK_EJECT_TOGGLE, NULL);
-            if (isPause) {
+            if ([self isPaused]) {
                 [self pause];
             }
         });

@@ -485,6 +485,12 @@ bool runloop_init_libretro_symbols(
 
 runloop_state_t *runloop_state_get_ptr(void);
 
+#ifdef HAVE_REWIND
+/* Inject the "virtual rewind button" state, equivalent to holding/releasing the RARCH_REWIND hotkey. */
+void runloop_set_rewind_hold(bool hold);
+bool runloop_get_rewind_hold(void);
+#endif
+
 RETRO_END_DECLS
 
 #endif

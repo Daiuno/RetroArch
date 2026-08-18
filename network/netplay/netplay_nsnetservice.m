@@ -3,6 +3,7 @@
 
 #import "netplay_private.h"
 
+#import "../../verbosity.h"
 #import "content.h"
 #import "../../frontend/frontend_driver.h"
 #import "paths.h"
@@ -39,16 +40,26 @@ static NetplayBonjourMan *nbm_instance;
 
 - (void)publish:(netplay_t *)netplay
 {
-    self.service = [[NSNetService alloc] initWithDomain:@"" type:@NETPLAY_MDNS_TYPE name:@"" port:netplay->tcp_port];
-    [self.service setTXTRecordData:[self TXTdataFromNetplay:netplay]];
-    [self.service setDelegate:self];
-    [self.service publish];
+    int port = netplay->tcp_port;
+    NSData *txt = [self TXTdataFromNetplay:netplay];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.service stop];
+        self.service = [[NSNetService alloc] initWithDomain:@""
+                                                       type:@NETPLAY_MDNS_TYPE
+                                                       name:@""
+                                                       port:port];
+        [self.service setTXTRecordData:txt];
+        [self.service setDelegate:self];
+        [self.service publish];
+    });
 }
 
 - (void)unpublish
 {
-    [self.service stop];
-    self.service = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.service stop];
+        self.service = nil;
+    });
 }
 
 - (void)browse
@@ -63,6 +74,14 @@ static NetplayBonjourMan *nbm_instance;
 
 - (void)finishBrowsing:(net_driver_state_t *)net_st
 {
+    if (![NSThread isMainThread])
+    {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [self finishBrowsing:net_st];
+        });
+        return;
+    }
+
     [self.browser stop];
     for (NSNetService *srv in self.services)
     {
@@ -155,8 +174,28 @@ static NetplayBonjourMan *nbm_instance;
            didFindService:(NSNetService *)service
                moreComing:(BOOL)moreComing
 {
-    [service resolveWithTimeout:0.9f];
+    [service setDelegate:self];
+    [service resolveWithTimeout:2.0f];
     [self.services addObject:service];
+}
+
+- (void)netServiceDidPublish:(NSNetService *)sender
+{
+    RARCH_LOG("[Discovery] Bonjour published %s port %ld.\n",
+        sender.type.UTF8String, (long)sender.port);
+}
+
+- (void)netService:(NSNetService *)sender didNotPublish:(NSDictionary<NSString *, NSNumber *> *)errorDict
+{
+    RARCH_ERR("[Discovery] Bonjour publish failed: %s\n",
+        errorDict.description.UTF8String);
+}
+
+- (void)netServiceBrowser:(NSNetServiceBrowser *)browser
+             didNotSearch:(NSDictionary<NSString *, NSNumber *> *)errorDict
+{
+    RARCH_ERR("[Discovery] Bonjour browse failed: %s\n",
+        errorDict.description.UTF8String);
 }
 
 - (void)netServiceBrowser:(NSNetServiceBrowser *)browser

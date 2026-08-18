@@ -167,6 +167,22 @@ typedef struct
 
 net_driver_state_t *networking_state_get_ptr(void);
 
+/* netplay events (callback to the upper layer via netplay_event_register_callback) */
+enum netplay_frontend_event
+{
+   NETPLAY_EVT_HOST_STARTED = 0,  /* This device has started up as the host */
+   NETPLAY_EVT_HOST_STOPPED,      /* This device's host has stopped */
+   NETPLAY_EVT_CONNECTED,         /* Connected to the host as a client (info = host's nickname) */
+   NETPLAY_EVT_DISCONNECTED,      /* Disconnected from the host as a client */
+   NETPLAY_EVT_PEER_CONNECTED,    /* Host side: a client has joined (info = other party's nickname) */
+   NETPLAY_EVT_PEER_DISCONNECTED, /* Host side: a client has disconnected (info = other party's nickname) */
+   NETPLAY_EVT_PEER_JOINED,       /* A player has joined the game (info = nickname, empty string means this device) */
+   NETPLAY_EVT_PEER_LEFT          /* A player has left the game and switched to spectating (info = nickname, empty string means this device) */
+};
+
+typedef void (*NetplayEventCallback)(int event, const char *info);
+void netplay_event_register_callback(NetplayEventCallback callback);
+
 bool netplay_compatible_version(const char *version);
 bool netplay_decode_hostname(const char *hostname,
    char *address, unsigned *port, char *session, size_t len);
@@ -208,6 +224,9 @@ void deinit_netplay_discovery(void);
 /** Discovery control */
 bool netplay_discovery_driver_ctl(enum rarch_netplay_discovery_ctl_state state,
    void *data);
+
+/* Respond to LAN UDP discovery queries. Can be called periodically by the frontend when the game is paused or the main loop is not running. */
+void netplay_lan_advertise(void);
 #endif
 
 extern const mitm_server_t netplay_mitm_server_list[NETPLAY_MITM_SERVERS];

@@ -7,6 +7,7 @@
 //
 
 #import "LibretroCore.h"
+#import "LibretroShaderPreview.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -54,12 +55,24 @@
 #import "JITSupport.h"
 #include "../../cheevos/cheevos.h"
 #include "../../deps/rcheevos/include/rc_client.h"
+#include "../../command.h"
+#include "../../core.h"
+#include "../../file_path_special.h"
+#include "../../libretro-common/include/libretro.h"
+#include "../../network/netplay/netplay.h"
+#include "../../tasks/tasks_internal.h"
 
 NSString * const RetroAchievementsNotification = @"RetroAchievementsNotification";
 NSString * const LibretroDidShutdownNotification = @"LibretroDidShutdownNotification";
 NSString * const DidConnectToWFCNotification = @"DidConnectToWFCNotification";
 NSString * const DidDisconnectFromWFCNotification = @"DidDisconnectFromWFCNotification";
 NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotification";
+NSString * const LibretroNetplayEventNotification = @"LibretroNetplayEventNotification";
+
+@interface LibretroHost (Private)
++ (instancetype)hostWithRoom:(const struct netplay_room *)room;
++ (instancetype)hostWithLANHost:(const struct netplay_host *)lanHost;
+@end
 
 @interface LibretroCore()
 
@@ -67,6 +80,67 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
 @property (assign) unsigned keyboardMods;
 
 @end
+
+static void netplayDidTrigger(int event, const char *info);
+static void (^_Nullable s_netplay_host_list_completion)(NSArray<LibretroHost *> * _Nullable hosts) = nil;
+static void (^_Nullable s_netplay_lan_host_list_completion)(NSArray<LibretroHost *> * _Nullable hosts) = nil;
+static NSTimer *s_netplay_task_pump = nil;
+static NSInteger s_netplay_task_pump_ticks = 0;
+static BOOL s_netplay_advertise_pump = NO;
+static const NSInteger kNetplayTaskPumpMaxTicks = 15 * 30;
+
+///暂停时 draw observer 被停掉: 任务队列不再推进, 主机也不再应答 UDP 55435 发现查询
+///这里只泵任务队列和局域网应答, 不调用 runloop_iterate, 游戏保持暂停
+static BOOL netplay_is_hosting(void)
+{
+    return netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_ENABLED, NULL)
+        && netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_SERVER, NULL);
+}
+
+static void netplay_stop_task_pump(void)
+{
+    [s_netplay_task_pump invalidate];
+    s_netplay_task_pump = nil;
+    s_netplay_task_pump_ticks = 0;
+    s_netplay_advertise_pump = NO;
+}
+
+static void netplay_pump_tick(void)
+{
+    task_queue_check();
+#ifdef HAVE_NETPLAYDISCOVERY
+    if (s_netplay_advertise_pump)
+        netplay_lan_advertise();
+#endif
+
+    s_netplay_task_pump_ticks++;
+
+    BOOL needScan = (s_netplay_host_list_completion != nil
+                     || s_netplay_lan_host_list_completion != nil);
+    if ((!needScan && !s_netplay_advertise_pump)
+        || (!s_netplay_advertise_pump && s_netplay_task_pump_ticks >= kNetplayTaskPumpMaxTicks))
+        netplay_stop_task_pump();
+}
+
+static void netplay_start_task_pump_if_paused(BOOL advertise)
+{
+    if (![[LibretroCore sharedInstance] isPaused])
+        return;
+
+    if (advertise)
+        s_netplay_advertise_pump = YES;
+
+    if (s_netplay_task_pump)
+        return;
+
+    s_netplay_task_pump_ticks = 0;
+    s_netplay_task_pump = [NSTimer timerWithTimeInterval:1.0 / 30.0
+                                                 repeats:YES
+                                                   block:^(NSTimer * _Nonnull timer) {
+        netplay_pump_tick();
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:s_netplay_task_pump forMode:NSRunLoopCommonModes];
+}
 
 @implementation LibretroCore
 
@@ -102,6 +176,7 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
     self.isRunning = YES;
     [[self getRetroArch] startWithCustomSaveDir:customSaveDir];
     cheevos_event_register_callback(cheevosDidTrigger);
+    netplay_event_register_callback(netplayDidTrigger);
     shutdown_register_callback(shutdownCallback);
     log_register_callback(libretroLogCallback);
     return [CocoaView get];
@@ -109,19 +184,32 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
 
 - (void)pause {
     [[self getRetroArch] pause];
+    if (netplay_is_hosting())
+        netplay_start_task_pump_if_paused(YES);
+}
+
+- (BOOL)isPaused {
+    return [[self getRetroArch] isPaused];
 }
 
 - (void)resume {
+    s_netplay_advertise_pump = NO;
+    if (!s_netplay_host_list_completion && !s_netplay_lan_host_list_completion)
+        netplay_stop_task_pump();
     [[self getRetroArch] resume];
 }
 
 - (void)stop {
     self.isRunning = NO;
     cheevos_event_register_callback(NULL);
+    netplay_event_register_callback(NULL);
     shutdown_register_callback(NULL);
     wfc_status_register_callback(NULL);
     log_register_callback(NULL);
     g_enableMonitorLibretroLog = NO;
+    s_netplay_host_list_completion = nil;
+    s_netplay_lan_host_list_completion = nil;
+    netplay_stop_task_pump();
     [self registerAzaharKeyboard:nil];
     [[self getRetroArch] stop];
 }
@@ -151,6 +239,26 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
 
 - (void)fastForward:(float)rate {
     [[self getRetroArch] fastForward:rate];
+}
+
+- (void)setRewindEnable:(BOOL)enable
+            granularity:(unsigned)granularity
+           bufferSizeMB:(unsigned)bufferSizeMB
+       bufferSizeStepMB:(unsigned)bufferSizeStepMB
+                   mute:(BOOL)mute {
+    [[self getRetroArch] setRewindEnable:enable
+                             granularity:granularity
+                            bufferSizeMB:bufferSizeMB
+                        bufferSizeStepMB:bufferSizeStepMB
+                                    mute:mute];
+}
+
+- (void)setRewindEnable:(BOOL)enable {
+    [self setRewindEnable:enable granularity:2 bufferSizeMB:20 bufferSizeStepMB:10 mute:NO];
+}
+
+- (void)setRewind:(BOOL)rewinding {
+    [[self getRetroArch] setRewind:rewinding];
 }
 
 - (void)reload {
@@ -493,6 +601,12 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
 
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {
     [[self getRetroArch] updateLibretroConfigs:configs];
+}
+
+- (void)updateRuningLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {
+    if (!self.isRunning)
+        return;
+    [[self getRetroArch] updateRuningLibretroConfigs:configs];
 }
 
 - (BOOL)setShader:(NSString *_Nullable)path {
@@ -1198,6 +1312,248 @@ static void azahar_keyboard_request_callback(
 
     dylib_close(lib);
     return game;
+}
+
++ (UIImage *_Nullable)previewImageWithImage:(UIImage *_Nonnull)image shaderPath:(NSString *_Nonnull)shaderPath {
+    return [LibretroShaderPreview renderImage:image shaderPath:shaderPath];
+}
+
++ (void)clearPreviewCache {
+    [LibretroShaderPreview clearCache];
+}
+
+#pragma mark - 联机(Netplay)
+
+static void netplayDidTrigger(int event, const char *info)
+{
+    NSString *infoStr = (info && info[0]) ? [NSString stringWithUTF8String:info] : @"";
+    NSDictionary *userInfo = @{
+        @"event": @(event),
+        @"info": infoStr
+    };
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (event == NETPLAY_EVT_HOST_STARTED)
+            netplay_start_task_pump_if_paused(YES);
+        else if (event == NETPLAY_EVT_HOST_STOPPED)
+        {
+            s_netplay_advertise_pump = NO;
+            if (!s_netplay_host_list_completion && !s_netplay_lan_host_list_completion)
+                netplay_stop_task_pump();
+        }
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:LibretroNetplayEventNotification
+         object:nil
+         userInfo:userInfo];
+    });
+}
+
+static void netplay_refresh_rooms_http_cb(retro_task_t *task, void *task_data,
+      void *user_data, const char *error)
+{
+    void (^completion)(NSArray<LibretroHost *> * _Nullable) = s_netplay_host_list_completion;
+    s_netplay_host_list_completion = nil;
+
+    if (!completion)
+        return;
+
+    http_transfer_data_t *data = (http_transfer_data_t *)task_data;
+    if (error || !data || !data->data || !data->len || data->status != 200)
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nil);
+        });
+        return;
+    }
+
+    char *room_data = (char *)malloc(data->len + 1);
+    if (!room_data)
+    {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nil);
+        });
+        return;
+    }
+    memcpy(room_data, data->data, data->len);
+    room_data[data->len] = '\0';
+
+    NSMutableArray<LibretroHost *> *hosts = [NSMutableArray array];
+    if (!string_is_empty(room_data))
+    {
+        netplay_rooms_parse(room_data, strlen(room_data));
+        int room_count = netplay_rooms_get_count();
+        for (int i = 0; i < room_count; i++)
+        {
+            struct netplay_room *room = netplay_room_get(i);
+            if (!room || !room->is_retroarch)
+                continue;
+            LibretroHost *host = [LibretroHost hostWithRoom:room];
+            if (host)
+                [hosts addObject:host];
+        }
+        netplay_rooms_free();
+    }
+    free(room_data);
+
+    NSArray<LibretroHost *> *result = [hosts copy];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completion(result);
+    });
+}
+
+static void netplay_refresh_lan_hosts_cb(const void *data)
+{
+    void (^completion)(NSArray<LibretroHost *> * _Nullable) = s_netplay_lan_host_list_completion;
+    s_netplay_lan_host_list_completion = nil;
+
+    if (!completion)
+        return;
+
+    const struct netplay_host_list *hosts =
+        (const struct netplay_host_list *)data;
+    NSMutableArray<LibretroHost *> *result = [NSMutableArray array];
+
+    if (hosts && hosts->size > 0)
+    {
+        for (size_t i = 0; i < hosts->size; i++)
+        {
+            LibretroHost *host = [LibretroHost hostWithLANHost:&hosts->hosts[i]];
+            if (host)
+                [result addObject:host];
+        }
+    }
+
+    NSArray<LibretroHost *> *hostsCopy = [result copy];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        completion(hostsCopy);
+    });
+}
+
+static void netplay_apply_nickname(NSString * _Nullable nickname)
+{
+    if (nickname.length == 0)
+        return;
+
+    settings_t *settings = config_get_ptr();
+    if (!settings)
+        return;
+
+    NSString *trimmed = [nickname stringByTrimmingCharactersInSet:
+        NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0)
+        return;
+
+    strlcpy(settings->paths.username, trimmed.UTF8String,
+        sizeof(settings->paths.username));
+}
+
+- (BOOL)startNetplayHost:(NSString *)nickname
+{
+    if (!self.isRunning)
+        return NO;
+    netplay_apply_nickname(nickname);
+    BOOL ok = command_event(CMD_EVENT_NETPLAY_ENABLE_HOST, NULL);
+    if (ok)
+        netplay_start_task_pump_if_paused(YES);
+    return ok;
+}
+
+- (void)stopNetplayHost
+{
+    command_event(CMD_EVENT_NETPLAY_DISCONNECT, NULL);
+}
+
+- (void)refreshNetplayHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion
+{
+    if (!self.isRunning)
+    {
+        if (completion)
+            completion(nil);
+        return;
+    }
+
+    s_netplay_host_list_completion = [completion copy];
+    if (!task_push_http_transfer(FILE_PATH_LOBBY_LIBRETRO_URL "list", true, NULL,
+            netplay_refresh_rooms_http_cb, NULL))
+    {
+        s_netplay_host_list_completion = nil;
+        if (completion)
+            completion(nil);
+        return;
+    }
+    netplay_start_task_pump_if_paused(NO);
+}
+
+- (void)refreshNetplayLANHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion
+{
+    if (!self.isRunning)
+    {
+        if (completion)
+            completion(nil);
+        return;
+    }
+
+    s_netplay_lan_host_list_completion = [completion copy];
+    if (!task_push_netplay_lan_scan(netplay_refresh_lan_hosts_cb, 2500))
+    {
+        s_netplay_lan_host_list_completion = nil;
+        if (completion)
+            completion(nil);
+        return;
+    }
+    netplay_start_task_pump_if_paused(NO);
+}
+
+- (BOOL)connectToNetplayHost:(LibretroHost *)host nickname:(NSString *)nickname
+{
+    if (!self.isRunning || !host)
+        return NO;
+
+    netplay_apply_nickname(nickname);
+
+    char hostname[512];
+    hostname[0] = '\0';
+
+    if (host.hostMethod == LibretroHostMethodMITM
+        && host.mitmAddress.length > 0
+        && host.mitmSession.length > 0)
+    {
+        snprintf(hostname, sizeof(hostname), "%s|%d|%s",
+            host.mitmAddress.UTF8String,
+            (int)host.mitmPort,
+            host.mitmSession.UTF8String);
+    }
+    else if (host.address.length > 0)
+    {
+        snprintf(hostname, sizeof(hostname), "%s|%d",
+            host.address.UTF8String,
+            (int)host.port);
+    }
+    else
+        return NO;
+
+    netplay_driver_ctl(RARCH_NETPLAY_CTL_ENABLE_CLIENT, NULL);
+    return command_event(CMD_EVENT_NETPLAY_INIT_DIRECT, (void *)hostname);
+}
+
+- (void)disconnectNetplay
+{
+    [self stopNetplayHost];
+}
+
+- (BOOL)currentCoreSupportsNetplay
+{
+    if (!self.isRunning)
+        return NO;
+
+    if (netplay_driver_ctl(RARCH_NETPLAY_CTL_USE_CORE_PACKET_INTERFACE, NULL))
+        return YES;
+
+    uint64_t quirks = core_serialization_quirks();
+    if (quirks & (RETRO_SERIALIZATION_QUIRK_INCOMPLETE
+                | RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION))
+        return NO;
+
+    return core_serialize_size() > 0;
 }
 
 @end

@@ -109,6 +109,7 @@ UINavigationControllerDelegate> {
 - (void)sendEvent:(UIEvent * _Nonnull)event;
 - (void)startWithCustomSaveDir:(NSString *_Nullable)customSaveDir;
 - (void)pause;
+- (BOOL)isPaused;
 - (void)resume;
 - (void)stop;
 - (BOOL)loadGame:(NSString *_Nonnull)gamePath corePath:(NSString *_Nonnull)corePath completion:(void(^ _Nullable)(NSDictionary *_Nullable))completion;
@@ -132,6 +133,7 @@ UINavigationControllerDelegate> {
 - (void)updateRunningCoreConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs flush:(BOOL)flush;
 - (void)updateLibretroConfig:(NSString *_Nonnull)key value:(NSString *_Nonnull)value;
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs;
+- (void)updateRuningLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs;
 - (BOOL)setShaderWith:(NSString *_Nullable)path;
 - (void)appendShader:(NSString *_Nonnull)path prepend:(BOOL)prepend;
 - (id _Nullable)loadParameters;
@@ -163,6 +165,12 @@ UINavigationControllerDelegate> {
 - (void)loadAmiibo:(NSString *_Nonnull)path;
 - (BOOL)isSearchingAmiibo;
 - (void)setFullScreen:(BOOL)isFullScreen;
+- (void)setRewindEnable:(BOOL)enable
+            granularity:(unsigned)granularity
+           bufferSizeMB:(unsigned)bufferSizeMB
+       bufferSizeStepMB:(unsigned)bufferSizeStepMB
+                   mute:(BOOL)mute;
+- (void)setRewind:(BOOL)rewinding;
 @end
 
 #else

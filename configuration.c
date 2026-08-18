@@ -6779,6 +6779,126 @@ void retroarch_config_deinit(void)
    config_st = NULL;
 }
 
+static size_t config_runtime_path_size(settings_t *settings, const char *ptr)
+{
+   if (ptr == settings->paths.username)
+      return sizeof(settings->paths.username);
+   if (ptr == settings->paths.netplay_password)
+      return sizeof(settings->paths.netplay_password);
+   if (ptr == settings->paths.netplay_spectate_password)
+      return sizeof(settings->paths.netplay_spectate_password);
+   return PATH_MAX_LENGTH;
+}
+
+bool config_set_runtime_value(const char *key, const char *value)
+{
+   unsigned i;
+   settings_t *settings            = config_get_ptr();
+   int bool_settings_size          = sizeof(settings->bools)  / sizeof(settings->bools.placeholder);
+   int float_settings_size         = sizeof(settings->floats) / sizeof(settings->floats.placeholder);
+   int int_settings_size           = sizeof(settings->ints)   / sizeof(settings->ints.placeholder);
+   int uint_settings_size          = sizeof(settings->uints)  / sizeof(settings->uints.placeholder);
+   int size_settings_size          = sizeof(settings->sizes)  / sizeof(settings->sizes.placeholder);
+   int array_settings_size         = sizeof(settings->arrays) / sizeof(settings->arrays.placeholder);
+   int path_settings_size          = sizeof(settings->paths)  / sizeof(settings->paths.placeholder);
+   struct config_bool_setting *bool_settings   = NULL;
+   struct config_float_setting *float_settings = NULL;
+   struct config_int_setting *int_settings     = NULL;
+   struct config_uint_setting *uint_settings   = NULL;
+   struct config_size_setting *size_settings   = NULL;
+   struct config_array_setting *array_settings = NULL;
+   struct config_path_setting *path_settings   = NULL;
+   bool found = false;
+
+   if (!settings || string_is_empty(key) || !value)
+      return false;
+
+   bool_settings  = populate_settings_bool (settings, &bool_settings_size);
+   float_settings = populate_settings_float(settings, &float_settings_size);
+   int_settings   = populate_settings_int  (settings, &int_settings_size);
+   uint_settings  = populate_settings_uint (settings, &uint_settings_size);
+   size_settings  = populate_settings_size (settings, &size_settings_size);
+   array_settings = populate_settings_array(settings, &array_settings_size);
+   path_settings  = populate_settings_path (settings, &path_settings_size);
+
+   for (i = 0; bool_settings && i < (unsigned)bool_settings_size; i++)
+   {
+      if (!string_is_equal(bool_settings[i].ident, key))
+         continue;
+      configuration_set_bool(settings, *bool_settings[i].ptr,
+            string_is_equal(value, "true") || string_is_equal(value, "1"));
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; int_settings && i < (unsigned)int_settings_size; i++)
+   {
+      if (!string_is_equal(int_settings[i].ident, key))
+         continue;
+      configuration_set_int(settings, *int_settings[i].ptr, (int)strtol(value, NULL, 0));
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; uint_settings && i < (unsigned)uint_settings_size; i++)
+   {
+      if (!string_is_equal(uint_settings[i].ident, key))
+         continue;
+      configuration_set_uint(settings, *uint_settings[i].ptr, (unsigned)strtoul(value, NULL, 0));
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; size_settings && i < (unsigned)size_settings_size; i++)
+   {
+      if (!string_is_equal(size_settings[i].ident, key))
+         continue;
+      configuration_set_uint(settings, *size_settings[i].ptr, (size_t)strtoul(value, NULL, 0));
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; float_settings && i < (unsigned)float_settings_size; i++)
+   {
+      if (!string_is_equal(float_settings[i].ident, key))
+         continue;
+      configuration_set_float(settings, *float_settings[i].ptr, (float)strtod(value, NULL));
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; array_settings && i < (unsigned)array_settings_size; i++)
+   {
+      if (!string_is_equal(array_settings[i].ident, key) || !array_settings[i].ptr)
+         continue;
+      settings->flags |= SETTINGS_FLG_MODIFIED;
+      strlcpy(array_settings[i].ptr, value, PATH_MAX_LENGTH);
+      found = true;
+      goto done;
+   }
+
+   for (i = 0; path_settings && i < (unsigned)path_settings_size; i++)
+   {
+      if (!string_is_equal(path_settings[i].ident, key) || !path_settings[i].ptr)
+         continue;
+      settings->flags |= SETTINGS_FLG_MODIFIED;
+      strlcpy(path_settings[i].ptr, value,
+            config_runtime_path_size(settings, path_settings[i].ptr));
+      found = true;
+      goto done;
+   }
+
+done:
+   free(bool_settings);
+   free(float_settings);
+   free(int_settings);
+   free(uint_settings);
+   free(size_settings);
+   free(array_settings);
+   free(path_settings);
+   return found;
+}
+
 void retroarch_config_init(void)
 {
    if (!config_st)

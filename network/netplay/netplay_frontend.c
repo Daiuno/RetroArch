@@ -212,6 +212,19 @@ const mitm_server_t netplay_mitm_server_list[NETPLAY_MITM_SERVERS] = {
 
 static net_driver_state_t networking_driver_st = {0};
 
+/* Online event callback registration (for use by the LibretroCore upper layer, modeled after cheevos_event_register_callback) */
+static NetplayEventCallback g_netplay_event_callback = NULL;
+void netplay_event_register_callback(NetplayEventCallback callback)
+{
+   g_netplay_event_callback = callback;
+}
+
+static void netplay_emit_frontend_event(int event, const char *info)
+{
+   if (g_netplay_event_callback)
+      g_netplay_event_callback(event, info ? info : "");
+}
+
 net_driver_state_t *networking_state_get_ptr(void)
 {
    return &networking_driver_st;
@@ -655,6 +668,20 @@ static bool netplay_lan_ad_server(netplay_t *netplay)
    return true;
 }
 #endif
+
+void netplay_lan_advertise(void)
+{
+#if !defined(VITA)
+   net_driver_state_t *net_st = &networking_driver_st;
+   netplay_t *netplay         = net_st->data;
+
+   if (!netplay || !netplay->is_server || netplay->mitm_handler)
+      return;
+
+   if (net_st->lan_ad_server_fd >= 0 || init_lan_ad_server_socket())
+      netplay_lan_ad_server(netplay);
+#endif
+}
 
 #endif
 
@@ -1171,6 +1198,9 @@ static void netplay_handshake_ready(netplay_t *netplay,
 
       /* Send them the savestate */
       netplay->force_send_savestate = true;
+
+      netplay_emit_frontend_event(NETPLAY_EVT_PEER_CONNECTED,
+         connection->nick);
    }
    else
    {
@@ -1178,6 +1208,9 @@ static void netplay_handshake_ready(netplay_t *netplay,
             sizeof(msg));
       _len += snprintf(msg + _len, sizeof(msg) - _len, ": \"%s\"",
             connection->nick);
+
+      netplay_emit_frontend_event(NETPLAY_EVT_CONNECTED,
+         connection->nick);
    }
 
    RARCH_LOG("[Netplay] %s\n", msg);
@@ -4233,6 +4266,12 @@ static void netplay_hangup(netplay_t *netplay,
       runloop_msg_queue_push(_msg, strlen(_msg), 1, 180, false, NULL,
          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
 
+   if (netplay->is_server)
+      netplay_emit_frontend_event(NETPLAY_EVT_PEER_DISCONNECTED,
+         connection->nick);
+   else
+      netplay_emit_frontend_event(NETPLAY_EVT_DISCONNECTED, NULL);
+
    socket_close(connection->fd);
    connection->flags &= ~NETPLAY_CONN_FLAG_ACTIVE;
    netplay_deinit_socket_buffer(&connection->send_packet_buffer);
@@ -4713,6 +4752,11 @@ static void netplay_announce_play_spectate(netplay_t *netplay,
    if (!netplay->is_server && !netplay_is_spectating()) /* force sync of achievement state */
       netplay_cmd_request_savestate(netplay);
 #endif
+
+   netplay_emit_frontend_event(
+      (mode == NETPLAY_CONNECTION_SPECTATING)
+         ? NETPLAY_EVT_PEER_LEFT : NETPLAY_EVT_PEER_JOINED,
+      nick);
 
    RARCH_LOG("[Netplay] %s\n", _msg);
    runloop_msg_queue_push(_msg, strlen(_msg), 1, 180, false, NULL,
@@ -8899,17 +8943,8 @@ static bool netplay_pre_frame(netplay_t *netplay)
    {
       settings_t *settings = config_get_ptr();
 
-/* Vita can't bind to our discovery port;
-   do not try to answer discovery queries there. */
-#if defined(HAVE_NETPLAYDISCOVERY) && !defined(VITA)
-      if (!netplay->mitm_handler)
-      {
-         net_driver_state_t *net_st = &networking_driver_st;
-
-         /* Advertise our server */
-         if (net_st->lan_ad_server_fd >= 0 || init_lan_ad_server_socket())
-            netplay_lan_ad_server(netplay);
-      }
+#ifdef HAVE_NETPLAYDISCOVERY
+      netplay_lan_advertise();
 #endif
 
       if (settings->bools.netplay_public_announce &&
@@ -8995,6 +9030,9 @@ void deinit_netplay(void)
 
    if (netplay)
    {
+      if (netplay->is_server)
+         netplay_emit_frontend_event(NETPLAY_EVT_HOST_STOPPED, NULL);
+
       if (netplay->nat_traversal)
          netplay_deinit_nat_traversal();
 
@@ -9181,6 +9219,9 @@ bool init_netplay(const char *server, unsigned port, const char *mitm_session)
          net_st->core_netpacket_interface->start)
       net_st->core_netpacket_interface->start(0,
             netplay_netpacket_send_cb, netplay_netpacket_poll_receive_cb);
+
+   if (netplay->is_server)
+      netplay_emit_frontend_event(NETPLAY_EVT_HOST_STARTED, NULL);
 
    return true;
 

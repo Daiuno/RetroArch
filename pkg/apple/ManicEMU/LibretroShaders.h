@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *identifier;    // 参数标识符
 @property (nonatomic, copy) NSString *desc;   // 参数描述
 @property (nonatomic, assign) float current;         // 当前值
+@property (nonatomic, assign) float initial;         // 初始值
 @property (nonatomic, assign) float minimum;         // 最小值
 @property (nonatomic, assign) float maximum;         // 最大值
 @property (nonatomic, assign) float step;            // 步长
