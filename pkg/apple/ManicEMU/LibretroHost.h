@@ -10,60 +10,60 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// 联机主机的连接方式
+/// How a netplay host can be reached
 typedef NS_ENUM(NSInteger, LibretroHostMethod) {
     LibretroHostMethodUnknown = 0,
     LibretroHostMethodManual  = 1,
     LibretroHostMethodUPNP    = 2,
-    /// 通过官方中继服务器转发
+    /// Relayed through the official MITM server
     LibretroHostMethodMITM    = 3,
 };
 
-/// 一个可加入的联机主机(房间)信息
+/// Info for a joinable netplay host (room)
 @interface LibretroHost : NSObject
 
-#pragma mark - 显示信息
-/// 主机玩家昵称
+#pragma mark - Display
+/// Host player nickname
 @property (nonatomic, copy, nullable) NSString *nickname;
-/// 核心名称
+/// Core name
 @property (nonatomic, copy, nullable) NSString *coreName;
-/// 核心版本
+/// Core version
 @property (nonatomic, copy, nullable) NSString *coreVersion;
-/// 正在游玩的游戏文件名
+/// Filename of the game currently being played
 @property (nonatomic, copy, nullable) NSString *content;
-/// 游戏内容 CRC32(用于校验双方 ROM 是否一致, 0 表示未知)
+/// Content CRC32 (used to verify both sides have the same ROM; 0 means unknown)
 @property (nonatomic, assign) NSInteger contentCRC;
-/// 主机的 RetroArch 版本号
+/// Host RetroArch version
 @property (nonatomic, copy, nullable) NSString *retroarchVersion;
-/// 主机前端标识(如 "darwin arm64")
+/// Host frontend identifier (e.g. "darwin arm64")
 @property (nonatomic, copy, nullable) NSString *frontend;
-/// 子系统名称(非子系统游戏为 "N/A")
+/// Subsystem name ("N/A" for non-subsystem games)
 @property (nonatomic, copy, nullable) NSString *subsystemName;
-/// 国家代码(仅互联网房间)
+/// Country code (internet rooms only)
 @property (nonatomic, copy, nullable) NSString *country;
 
-#pragma mark - 状态
-/// 加入游玩是否需要密码
+#pragma mark - Status
+/// Whether a password is required to join as a player
 @property (nonatomic, assign) BOOL hasPassword;
-/// 观战是否需要密码
+/// Whether a password is required to spectate
 @property (nonatomic, assign) BOOL hasSpectatePassword;
-/// 是否为局域网主机
+/// Whether this is a LAN host
 @property (nonatomic, assign) BOOL isLan;
-/// 是否可连接(互联网房间可能因 NAT 不可直连)
+/// Whether connectable (internet rooms may not be reachable due to NAT)
 @property (nonatomic, assign) BOOL connectable;
 
-#pragma mark - 连接信息
-/// 主机地址
+#pragma mark - Connection
+/// Host address
 @property (nonatomic, copy, nullable) NSString *address;
-/// 主机端口
+/// Host port
 @property (nonatomic, assign) NSInteger port;
-/// 连接方式
+/// Connection method
 @property (nonatomic, assign) LibretroHostMethod hostMethod;
-/// 中继服务器地址(仅 MITM)
+/// MITM server address (MITM only)
 @property (nonatomic, copy, nullable) NSString *mitmAddress;
-/// 中继服务器端口(仅 MITM)
+/// MITM server port (MITM only)
 @property (nonatomic, assign) NSInteger mitmPort;
-/// 中继会话 ID(仅 MITM)
+/// MITM session ID (MITM only)
 @property (nonatomic, copy, nullable) NSString *mitmSession;
 
 @end

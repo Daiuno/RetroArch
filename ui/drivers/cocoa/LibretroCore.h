@@ -39,26 +39,26 @@ typedef NS_ENUM(NSUInteger, LibretroButton) {
 };
 
 extern NSString * const RetroAchievementsNotification;
-/// 联机事件通知, userInfo: @{@"event": @(LibretroNetplayEvent), @"info": NSString(相关昵称, 可能为空串)}
+/// Netplay event notification. userInfo: @{@"event": @(LibretroNetplayEvent), @"info": NSString (related nickname, may be empty)}
 extern NSString * const LibretroNetplayEventNotification;
 
-/// 联机事件(与 netplay.h 中 enum netplay_frontend_event 一一对应)
+/// Netplay events (1:1 with enum netplay_frontend_event in netplay.h)
 typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
-    /// 本机作为主机启动完成
+    /// Local host started successfully
     LibretroNetplayEventHostStarted = 0,
-    /// 本机主机停止
+    /// Local host stopped
     LibretroNetplayEventHostStopped,
-    /// 作为客户端连接到主机(info=主机昵称)
+    /// Connected to a host as a client (info = host nickname)
     LibretroNetplayEventConnected,
-    /// 作为客户端与主机断开
+    /// Disconnected from the host as a client
     LibretroNetplayEventDisconnected,
-    /// 主机侧:有客户端接入(info=对方昵称)
+    /// Host side: a client connected (info = peer nickname)
     LibretroNetplayEventPeerConnected,
-    /// 主机侧:客户端断开(info=对方昵称)
+    /// Host side: a client disconnected (info = peer nickname)
     LibretroNetplayEventPeerDisconnected,
-    /// 有玩家加入游玩(info=昵称, 空串表示本机)
+    /// A player joined gameplay (info = nickname; empty string means local)
     LibretroNetplayEventPeerJoined,
-    /// 有玩家退出游玩转为观战(info=昵称, 空串表示本机)
+    /// A player left gameplay and became a spectator (info = nickname; empty string means local)
     LibretroNetplayEventPeerLeft,
 };
 
@@ -80,19 +80,19 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (BOOL)saveState:(void(^ _Nullable)(NSString *_Nullable path))completion;
 - (BOOL)loadState:(NSString *_Nonnull)path;
 - (void)fastForward:(float)rate;
-/// 开启或关闭回朔功能(开启后开始在后台记录快照,有内存与CPU开销)
-/// @param granularity 回朔帧数(每隔多少帧记录一个快照,回朔时每步跨越的帧数),默认 10
-/// @param bufferSizeMB 回朔缓冲区大小(MB),默认 20
-/// @param bufferSizeStepMB 回朔缓冲区大小调整步长(MB),默认 10
-/// @param mute 回朔时是否静音,默认 NO
+/// Enable or disable rewind (when on, snapshots are recorded in the background; costs memory and CPU)
+/// @param granularity Rewind frame interval (snapshot every N frames; each rewind step spans this many frames). Default 10
+/// @param bufferSizeMB Rewind buffer size in MB. Default 20
+/// @param bufferSizeStepMB Rewind buffer size adjustment step in MB. Default 10
+/// @param mute Whether to mute while rewinding. Default NO
 - (void)setRewindEnable:(BOOL)enable
             granularity:(unsigned)granularity
            bufferSizeMB:(unsigned)bufferSizeMB
        bufferSizeStepMB:(unsigned)bufferSizeStepMB
                    mute:(BOOL)mute;
-/// 便捷方法,使用默认参数:granularity=10, bufferSizeMB=20, bufferSizeStepMB=10, mute=NO
+/// Convenience method with defaults: granularity=10, bufferSizeMB=20, bufferSizeStepMB=10, mute=NO
 - (void)setRewindEnable:(BOOL)enable;
-/// 开始(YES,按住语义)或结束(NO)回朔,需先开启回朔功能
+/// Start (YES, hold-to-rewind) or stop (NO) rewinding. Rewind must be enabled first
 - (void)setRewind:(BOOL)rewinding;
 - (void)reload;
 - (void)reloadByKeepState:(BOOL)keepState;
@@ -107,7 +107,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)releaseKeyboard:(LibretroKeyboardCode *_Nonnull)keyboardCode;
 - (void)handleUIPress:(UIPress *)press withEvent:(UIPressesEvent *)event down:(BOOL)down;
 - (void)keyboardEvent:(UIEvent *_Nonnull)event;
-///x,y取值范围 -1~1
+/// x, y range: -1 to 1
 - (void)moveStick:(BOOL)isLeft x:(CGFloat)x y:(CGFloat)y playerIndex:(unsigned)playerIndex;
 - (void)updatePSPCheat:(NSString *_Nonnull)cheatCode cheatFilePath:(NSString *_Nonnull)cheatFilePath reloadGame:(BOOL)reloadGame;
 - (void)updateCoreConfig:(NSString *_Nonnull)coreName key:(NSString *_Nonnull)key value:(NSString *_Nonnull)value reload:(BOOL)reload;
@@ -116,7 +116,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)updateRunningCoreConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs flush:(BOOL)flush;
 - (void)updateLibretroConfig:(NSString *_Nonnull)key value:(NSString *_Nonnull)value;
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs;
-/// 写入当前进程内的 RetroArch 运行时 settings, 立刻生效, 不写 retroarch.cfg
+/// Write RetroArch runtime settings in the current process. Takes effect immediately; does not write retroarch.cfg
 - (void)updateRuningLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs;
 - (BOOL)setShader:(NSString *_Nullable)path;
 - (NSArray<ShaderParameter *> *_Nullable)loadParameters;
@@ -166,24 +166,24 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 + (UIImage *_Nullable)previewImageWithImage:(UIImage *_Nonnull)image shaderPath:(NSString *_Nonnull)shaderPath;
 + (void)clearPreviewCache;
 
-#pragma mark - 联机(Netplay)
-/// 作为游戏主机开启联机(需已加载游戏, 会重载游戏内容)
-/// @param nickname 联机昵称, 局域网/大厅发现时展示; 空则沿用当前配置(未设置时为 Anonymous)
-/// 结果通过 LibretroNetplayEventNotification 的 HostStarted 事件回调
+#pragma mark - Netplay
+/// Start netplay as a game host (game must already be loaded; content will be reloaded)
+/// @param nickname Netplay nickname shown in LAN/lobby discovery. Empty keeps the current config (Anonymous if unset)
+/// Result is delivered via LibretroNetplayEventNotification HostStarted
 - (BOOL)startNetplayHost:(NSString * _Nullable)nickname;
-/// 停止联机主机
+/// Stop the netplay host
 - (void)stopNetplayHost;
-/// 刷新互联网联机主机列表(异步, 主线程回调; 失败时 hosts 为 nil)
+/// Refresh the internet netplay host list (async, callback on main thread; hosts is nil on failure)
 - (void)refreshNetplayHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion;
-/// 刷新局域网联机主机列表(异步, 主线程回调, 约 2.5s 扫描超时; 失败时 hosts 为 nil)
+/// Refresh the LAN netplay host list (async, callback on main thread, ~2.5s scan timeout; hosts is nil on failure)
 - (void)refreshNetplayLANHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion;
-/// 作为客户端连接到指定主机(需已加载与主机相同的游戏和核心)
-/// @param nickname 本机联机昵称, 主机侧会看到; 空则沿用当前配置(未设置时为 Anonymous)
-/// 结果通过 LibretroNetplayEventNotification 的 Connected/Disconnected 事件回调
+/// Connect to a host as a client (the same game and core as the host must already be loaded)
+/// @param nickname Local netplay nickname, visible to the host. Empty keeps the current config (Anonymous if unset)
+/// Result is delivered via LibretroNetplayEventNotification Connected/Disconnected
 - (BOOL)connectToNetplayHost:(LibretroHost *_Nonnull)host nickname:(NSString * _Nullable)nickname;
-/// 断开当前联机(客户端断开连接/主机停止, 等价于 stopNetplayHost)
+/// Disconnect the current netplay session (client disconnect / host stop; equivalent to stopNetplayHost)
 - (void)disconnectNetplay;
-/// 当前已加载的核心是否支持联机(需在加载游戏后调用)
+/// Whether the currently loaded core supports netplay (call after loading a game)
 - (BOOL)currentCoreSupportsNetplay;
 
 @end
