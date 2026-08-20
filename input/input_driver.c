@@ -4661,6 +4661,8 @@ bool input_driver_grab_mouse(void)
 {
    if (!input_driver_st.current_driver || !input_driver_st.current_driver->grab_mouse)
       return false;
+   if (!input_driver_st.current_data)
+         return false;
    input_driver_st.current_driver->grab_mouse(
          input_driver_st.current_data, true);
    return true;
@@ -4670,6 +4672,8 @@ bool input_driver_ungrab_mouse(void)
 {
    if (!input_driver_st.current_driver || !input_driver_st.current_driver->grab_mouse)
       return false;
+   if (!input_driver_st.current_data)
+         return false;
    input_driver_st.current_driver->grab_mouse(input_driver_st.current_data, false);
    return true;
 }

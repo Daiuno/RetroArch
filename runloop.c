@@ -653,6 +653,18 @@ static dylib_t load_dynamic_core(const char *path, char *s,
 #if !(defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
    if (dylib_proc(NULL, "retro_init"))
    {
+#if defined(IOS) || defined(OSX)
+      /* App-bundled frameworks often stay mapped after dlclose() even when
+       * retro_deinit() has run. Re-open by path and reuse the handle instead
+       * of aborting — the only case we guard against is a true static link. */
+      path_resolve_realpath(s, len, resolve_symlinks);
+      dylib_t lib = dylib_load(path);
+      if (lib)
+      {
+         RARCH_LOG("[Core]: Reusing already mapped core: \"%s\"\n", path);
+         return lib;
+      }
+#endif
       /* Try to verify that -lretro was not linked in from other modules
        * since loading it dynamically and with -l will fail hard. */
       RARCH_ERR("Serious problem. RetroArch wants to load libretro cores"

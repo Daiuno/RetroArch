@@ -879,6 +879,8 @@ static void cocoa_input_grab_mouse(void *data, bool state)
 static void cocoa_input_grab_mouse(void *data, bool state)
 {
    cocoa_input_data_t *apple = (cocoa_input_data_t*)data;
+    if (!apple)
+        return;
 
    apple->mouse_grabbed = state;
 

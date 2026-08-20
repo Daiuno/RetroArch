@@ -68,6 +68,10 @@ NSString * const DidConnectToWFCNotification = @"DidConnectToWFCNotification";
 NSString * const DidDisconnectFromWFCNotification = @"DidDisconnectFromWFCNotification";
 NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotification";
 NSString * const LibretroNetplayEventNotification = @"LibretroNetplayEventNotification";
+NSString * const FirmwareNoSupportNotification = @"FirmwareNoSupportNotification";
+
+static BOOL LibretroPathLooksLikeEKA2L1(NSString *corePath);
+static void LibretroEKA2L1ShutdownManagement(void);
 
 @interface LibretroHost (Private)
 + (instancetype)hostWithRoom:(const struct netplay_room *)room;
@@ -211,6 +215,7 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     s_netplay_lan_host_list_completion = nil;
     netplay_stop_task_pump();
     [self registerAzaharKeyboard:nil];
+    [self registerEKA2L1InputDialog:nil questionDialog:nil];
     [[self getRetroArch] stop];
 }
 
@@ -270,14 +275,23 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
 }
 
 - (BOOL)loadGame:(NSString *_Nonnull)gamePath corePath:(NSString *_Nonnull)corePath completion:(void(^ _Nullable)(NSDictionary *_Nullable))completion {
+    if (!LibretroPathLooksLikeEKA2L1(corePath)) {
+        LibretroEKA2L1ShutdownManagement();
+    }
     return [[self getRetroArch] loadGame:gamePath corePath:corePath completion:completion];
 }
 
 - (void)loadCoreWithoutContent:(NSString *_Nonnull)corePath {
+    if (!LibretroPathLooksLikeEKA2L1(corePath)) {
+        LibretroEKA2L1ShutdownManagement();
+    }
     [[self getRetroArch] loadCoreWithoutContent:corePath];
 }
 
 - (void)loadCoreWithoutRunning:(NSString *_Nonnull)corePath {
+    if (!LibretroPathLooksLikeEKA2L1(corePath)) {
+        LibretroEKA2L1ShutdownManagement();
+    }
     [[self getRetroArch] loadCoreWithoutRunning:corePath];
 }
 
@@ -956,11 +970,11 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
     if (!g_enableMonitorLibretroLog) {
         return;
     }
-    // 使用 va_list 格式化字符串
+    // Format strings using va_list
     char buffer[4096];
     vsnprintf(buffer, sizeof(buffer), fmt, args);
     
-    // 根据日志级别输出
+    // Output according to log level.
     NSString *logMessage = [NSString stringWithUTF8String:buffer];
     
     if ([logMessage containsString:@" NOT FOUND (tried in "]) {
@@ -978,6 +992,13 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
                     [[NSNotificationCenter defaultCenter] postNotificationName:MAMEGameFileMissingNotification object:g_mameMissingFileLog];
                     g_mameMissingFileLog = nil;
                 });
+            } else if ([logMessage containsString:@"[EKA2L1] Symbian App Killed"]) {
+                // EKA2L1 guest app crash — detect via core log (independent of log monitor toggle).
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [[NSNotificationCenter defaultCenter] postNotificationName:LibretroDidShutdownNotification object:nil];
+                });
+            } else if ([logMessage containsString:@"[EKA2L1] Firmware doesn't support Symbian App"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:FirmwareNoSupportNotification object:nil];
             }
             break;
         default:
@@ -1081,7 +1102,7 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
     [[self getRetroArch] setFullScreen:isFullScreen];
 }
 
-#pragma mark - Azahar Keyboard Support
+#pragma mark - Azahar
 
 /* ABI layout must match azahar core (libretro_azahar.h); loaded via dylib_proc only. */
 struct retro_azahar_keyboard_config_local {
@@ -1229,6 +1250,7 @@ static void azahar_keyboard_request_callback(
         const char* path_cstr = [path UTF8String];
         install_cia(path_cstr);
     }
+    dylib_close(lib);
 }
 
 + (NSString *_Nullable)getPSPGameIDWithRomPath:(NSString *_Nonnull)romPath {
@@ -1322,7 +1344,7 @@ static void azahar_keyboard_request_callback(
     [LibretroShaderPreview clearCache];
 }
 
-#pragma mark - 联机(Netplay)
+#pragma mark - Netplay
 
 static void netplayDidTrigger(int event, const char *info)
 {
@@ -1555,5 +1577,642 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
 
     return core_serialize_size() > 0;
 }
+
+#pragma mark - EKA2L1 Symbian
+
+typedef struct {
+    const char *initial_text;
+    int max_length;
+} retro_eka2l1_input_dialog_request_local;
+
+typedef struct {
+    const char *text;
+    const char *button_yes;
+    const char *button_no;
+} retro_eka2l1_question_dialog_request_local;
+
+static void (^_Nullable s_eka2l1_input_dialog_callback)(NSString *_Nullable initialText, NSInteger maxLength) = nil;
+static void (^_Nullable s_eka2l1_question_dialog_callback)(NSString *_Nonnull text, NSString *_Nullable buttonYes, NSString *_Nullable buttonNo) = nil;
+
+static void eka2l1_input_dialog_request_callback(const retro_eka2l1_input_dialog_request_local *_Nullable request) {
+    if (!s_eka2l1_input_dialog_callback || !request) {
+        return;
+    }
+
+    void (^callback)(NSString *_Nullable, NSInteger) = s_eka2l1_input_dialog_callback;
+    if (request->max_length < 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            callback(nil, -1);
+        });
+        return;
+    }
+
+    NSString *initialText = request->initial_text ? [NSString stringWithUTF8String:request->initial_text] : @"";
+    NSInteger maxLength = request->max_length;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        callback(initialText, maxLength);
+    });
+}
+
+static void eka2l1_question_dialog_request_callback(const retro_eka2l1_question_dialog_request_local *_Nullable request) {
+    if (!s_eka2l1_question_dialog_callback || !request || !request->text) {
+        return;
+    }
+
+    NSString *text = [NSString stringWithUTF8String:request->text];
+    NSString *buttonYes = request->button_yes ? [NSString stringWithUTF8String:request->button_yes] : nil;
+    NSString *buttonNo = request->button_no ? [NSString stringWithUTF8String:request->button_no] : nil;
+    void (^callback)(NSString *, NSString *, NSString *) = s_eka2l1_question_dialog_callback;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        callback(text, buttonYes, buttonNo);
+    });
+}
+
+- (void)registerEKA2L1InputDialog:(void(^ _Nullable)(NSString *_Nullable initialText, NSInteger maxLength))inputCallback
+                   questionDialog:(void(^ _Nullable)(NSString *_Nonnull text, NSString *_Nullable buttonYes, NSString *_Nullable buttonNo))questionCallback {
+#ifdef HAVE_DYNAMIC
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    if (!runloop_st || !runloop_st->lib_handle) {
+        return;
+    }
+
+    s_eka2l1_input_dialog_callback = [inputCallback copy];
+    s_eka2l1_question_dialog_callback = [questionCallback copy];
+
+    typedef void (*set_input_dialog_callback_t)(void (*)(const retro_eka2l1_input_dialog_request_local *));
+    typedef void (*set_question_dialog_callback_t)(void (*)(const retro_eka2l1_question_dialog_request_local *));
+
+    set_input_dialog_callback_t set_input_callback =
+        (set_input_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_input_dialog_callback");
+    set_question_dialog_callback_t set_question_callback =
+        (set_question_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_question_dialog_callback");
+
+    if (set_input_callback) {
+        set_input_callback(inputCallback ? eka2l1_input_dialog_request_callback : NULL);
+        RARCH_LOG("[EKA2L1] input-dialog callback %s to core\n",
+                  inputCallback ? "registered" : "cleared");
+    } else {
+        RARCH_LOG("[EKA2L1] retro_eka2l1_set_input_dialog_callback not found in core — rebuild eka2l1.libretro\n");
+    }
+    if (set_question_callback) {
+        set_question_callback(questionCallback ? eka2l1_question_dialog_request_callback : NULL);
+        RARCH_LOG("[EKA2L1] question-dialog callback %s to core\n",
+                  questionCallback ? "registered" : "cleared");
+    } else {
+        RARCH_LOG("[EKA2L1] retro_eka2l1_set_question_dialog_callback not found in core — rebuild eka2l1.libretro\n");
+    }
+#endif
+}
+
+- (void)submitEKA2L1Input:(NSString *_Nullable)text {
+#ifdef HAVE_DYNAMIC
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    if (!runloop_st || !runloop_st->lib_handle) {
+        return;
+    }
+
+    typedef void (*submit_input_t)(const char *);
+    submit_input_t submit_input = (submit_input_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_submit_input");
+    if (submit_input) {
+        submit_input(text ? [text UTF8String] : "");
+    }
+#endif
+}
+
+- (void)submitEKA2L1QuestionResponse:(NSInteger)value {
+#ifdef HAVE_DYNAMIC
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    if (!runloop_st || !runloop_st->lib_handle) {
+        return;
+    }
+
+    typedef void (*submit_question_response_t)(int);
+    submit_question_response_t submit_question_response =
+        (submit_question_response_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_submit_question_response");
+    if (submit_question_response) {
+        submit_question_response((int)value);
+    }
+#endif
+}
+
+static NSString *LibretroSymbianSaveRoot(void) {
+    NSString *documentsDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    return [documentsDir stringByAppendingPathComponent:@"EKA2L1"];
+}
+
+typedef struct {
+    uint32_t    index;
+    uint32_t    epoc_version;
+    uint32_t    machine_uid;
+    const char *firmware_code;
+    const char *manufacturer;
+    const char *model;
+    uint8_t     symbian_os_major;
+    uint8_t     symbian_os_minor;
+    const char *symbian_platform;
+    uint32_t    screen_width;
+    uint32_t    screen_height;
+} retro_eka2l1_device_entry;
+
+typedef struct {
+    uint32_t    uid;
+    const char *short_caption;
+    const char *long_caption;
+    const char *app_path;
+    void       *icon_file;
+    size_t      icon_file_size;
+    char        drive_letter;
+    bool        is_system_app;
+    bool        is_hidden;
+    bool        is_user_installed;
+    retro_eka2l1_device_entry compatible_device;
+} retro_eka2l1_app_entry;
+
+typedef struct {
+    int error;
+    retro_eka2l1_device_entry device;
+} retro_eka2l1_install_device_result;
+
+typedef struct {
+    uint32_t    uid;
+    int32_t     index;
+    const char *package_name;
+    const char *vendor_name;
+} retro_eka2l1_install_game_package;
+
+typedef struct {
+    int error;
+    retro_eka2l1_app_entry app;
+    const retro_eka2l1_install_game_package *packages;
+    uint32_t package_count;
+} retro_eka2l1_install_game_result;
+
+typedef struct {
+    retro_eka2l1_app_entry app;
+    const retro_eka2l1_install_game_package *packages;
+    uint32_t package_count;
+} retro_eka2l1_game_entry;
+
+typedef struct {
+    uint32_t    uid;
+    int32_t     index;
+    const char *package_name;
+    const char *vendor_name;
+} retro_eka2l1_package_entry;
+
+static dylib_t g_eka2l1_mgmt_lib = NULL;
+static BOOL g_eka2l1_mgmt_lib_owned = NO;
+static int g_eka2l1_mgmt_in_flight = 0;
+
+static NSLock *LibretroEKA2L1MgmtLock(void) {
+    static NSLock *lock;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        lock = [NSLock new];
+    });
+    return lock;
+}
+
+static BOOL LibretroPathLooksLikeEKA2L1(NSString *corePath) {
+    if (!corePath.length) {
+        return NO;
+    }
+    NSString *name = corePath.lastPathComponent.lowercaseString;
+    return [name containsString:@"eka2l1"];
+}
+
+static dylib_t LibretroEKA2L1RunloopHandle(void) {
+#ifdef HAVE_DYNAMIC
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    if (runloop_st && runloop_st->lib_handle) {
+        void *sym = (void *)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_extension_version");
+        if (sym) {
+            return runloop_st->lib_handle;
+        }
+    }
+#endif
+    return NULL;
+}
+
+static dylib_t LibretroEKA2L1Open(BOOL *libOwned) {
+    if (libOwned) {
+        *libOwned = NO;
+    }
+    [LibretroEKA2L1MgmtLock() lock];
+#ifdef HAVE_DYNAMIC
+    dylib_t runloop_lib = LibretroEKA2L1RunloopHandle();
+    if (runloop_lib) {
+        g_eka2l1_mgmt_in_flight++;
+        [LibretroEKA2L1MgmtLock() unlock];
+        return runloop_lib;
+    }
+#endif
+    if (g_eka2l1_mgmt_lib) {
+        g_eka2l1_mgmt_in_flight++;
+        dylib_t cached = g_eka2l1_mgmt_lib;
+        [LibretroEKA2L1MgmtLock() unlock];
+        return cached;
+    }
+    [LibretroEKA2L1MgmtLock() unlock];
+
+    NSString *corePath = [[NSBundle mainBundle] pathForResource:@"eka2l1.libretro" ofType:@"framework" inDirectory:@"Frameworks"];
+    if (!corePath) {
+        return NULL;
+    }
+    NSString *dylibPath = [corePath stringByAppendingPathComponent:@"eka2l1.libretro"];
+    dylib_t lib = dylib_load([dylibPath UTF8String]);
+    if (!lib) {
+        return NULL;
+    }
+
+    [LibretroEKA2L1MgmtLock() lock];
+    if (g_eka2l1_mgmt_lib) {
+        dylib_close(lib);
+        lib = g_eka2l1_mgmt_lib;
+    } else {
+        g_eka2l1_mgmt_lib = lib;
+        g_eka2l1_mgmt_lib_owned = YES;
+    }
+    g_eka2l1_mgmt_in_flight++;
+    [LibretroEKA2L1MgmtLock() unlock];
+    if (libOwned) {
+        *libOwned = NO;
+    }
+    return lib;
+}
+
+static void LibretroEKA2L1Close(dylib_t lib, BOOL libOwned) {
+    (void)lib;
+    (void)libOwned;
+    [LibretroEKA2L1MgmtLock() lock];
+    if (g_eka2l1_mgmt_in_flight > 0) {
+        g_eka2l1_mgmt_in_flight--;
+    }
+    [LibretroEKA2L1MgmtLock() unlock];
+}
+
+static void LibretroEKA2L1ShutdownManagement(void) {
+    [LibretroEKA2L1MgmtLock() lock];
+    dylib_t lib = g_eka2l1_mgmt_lib;
+    if (!lib) {
+        lib = LibretroEKA2L1RunloopHandle();
+    }
+    dylib_t to_close = NULL;
+    if (g_eka2l1_mgmt_lib_owned && g_eka2l1_mgmt_lib && g_eka2l1_mgmt_in_flight == 0) {
+        to_close = g_eka2l1_mgmt_lib;
+        g_eka2l1_mgmt_lib = NULL;
+        g_eka2l1_mgmt_lib_owned = NO;
+    }
+    [LibretroEKA2L1MgmtLock() unlock];
+
+    if (lib) {
+        typedef void (*shutdown_engine_t)(void);
+        shutdown_engine_t shutdown_engine =
+            (shutdown_engine_t)dylib_proc(lib, "retro_eka2l1_shutdown_engine");
+        if (shutdown_engine) {
+            shutdown_engine();
+        }
+    }
+    if (to_close) {
+        dylib_close(to_close);
+    }
+}
+
+static BOOL LibretroEKA2L1ConfigureStorage(dylib_t lib) {
+    typedef void (*set_paths_t)(const char *, const char *);
+    set_paths_t set_paths = (set_paths_t)dylib_proc(lib, "retro_eka2l1_set_storage_paths");
+    if (!set_paths) {
+        return NO;
+    }
+    set_paths(NULL, [LibretroSymbianSaveRoot() UTF8String]);
+    return YES;
+}
+
+static LibretroSymbianRomInstallResult LibretroSymbianRomResultFromError(int err) {
+    if (err >= 0 && err <= 11) {
+        return (LibretroSymbianRomInstallResult)err;
+    }
+    return LibretroSymbianRomInstallResultUnknown;
+}
+
+static LibretroSymbianGameInstallResult LibretroSymbianGameResultFromError(int err) {
+    switch (err) {
+        case 0:  return LibretroSymbianGameInstallResultOK;
+        case 1:  return LibretroSymbianGameInstallResultNot_exist;
+        case 5:  return LibretroSymbianGameInstallResultAlreadyExist;
+        case 6:  return LibretroSymbianGameInstallResultGeneralFailure;
+        case 50: return LibretroSymbianGameInstallResultAborted;
+        case 51: return LibretroSymbianGameInstallResultInvalidPackage;
+        case 52: return LibretroSymbianGameInstallResultUnsupportedFirmware;
+        default: return LibretroSymbianGameInstallResultUnknown;
+    }
+}
+
+static NSString *LibretroSymbianNonEmptyUTF8String(const char *value) {
+    if (!value) {
+        return nil;
+    }
+    // 64-bit iOS user mappings sit above 4GB. A truncated pointer or a uint32
+    // leaked into a char* (the 0x5b4320 crash) is never a live C string.
+    if ((uintptr_t)value < 0x100000000ull) {
+        return nil;
+    }
+    if (!value[0]) {
+        return nil;
+    }
+    NSString *string = [NSString stringWithUTF8String:value];
+    if (!string.length) {
+        return nil;
+    }
+    NSCharacterSet *nonNull = [[NSCharacterSet characterSetWithCharactersInString:@"\0"] invertedSet];
+    NSString *trimmed = [[string componentsSeparatedByCharactersInSet:nonNull.invertedSet] componentsJoinedByString:@""];
+    trimmed = [trimmed stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return trimmed.length ? trimmed : nil;
+}
+
+static LibretroSymbianDevice *LibretroSymbianDeviceFromEntry(const retro_eka2l1_device_entry *entry) {
+    if (!entry) {
+        return nil;
+    }
+    LibretroSymbianDevice *device = [LibretroSymbianDevice new];
+    device.index = (NSInteger)entry->index;
+    device.epocVersion = (NSInteger)entry->epoc_version;
+    device.machineUid = (NSInteger)entry->machine_uid;
+    device.screenWidth = (NSInteger)entry->screen_width;
+    device.screenHeight = (NSInteger)entry->screen_height;
+    device.firmwareCode = LibretroSymbianNonEmptyUTF8String(entry->firmware_code);
+    device.manufacturer = LibretroSymbianNonEmptyUTF8String(entry->manufacturer);
+    device.model = LibretroSymbianNonEmptyUTF8String(entry->model);
+    device.symbianOsMajor = entry->symbian_os_major;
+    device.symbianOsMinor = entry->symbian_os_minor;
+    device.symbianPlatform = LibretroSymbianNonEmptyUTF8String(entry->symbian_platform);
+    return device;
+}
+
+static LibretroSymbianGame *LibretroSymbianGameFromAppAndPackages(const retro_eka2l1_app_entry *app,
+                                                                  const retro_eka2l1_install_game_package *packages,
+                                                                  uint32_t package_count) {
+    if (!app) {
+        return nil;
+    }
+    LibretroSymbianGame *game = [LibretroSymbianGame new];
+    game.uid = (NSInteger)app->uid;
+    game.shortCaption = LibretroSymbianNonEmptyUTF8String(app->short_caption);
+    game.longCaption = LibretroSymbianNonEmptyUTF8String(app->long_caption);
+    game.appPath = LibretroSymbianNonEmptyUTF8String(app->app_path);
+    game.driveLetter = app->drive_letter ? [NSString stringWithFormat:@"%c", app->drive_letter] : @"";
+    game.isSystemApp = app->is_system_app;
+    game.isHidden = app->is_hidden;
+    game.isUserInstalled = app->is_user_installed;
+    game.compatibleDevice = LibretroSymbianDeviceFromEntry(&app->compatible_device);
+    if (app->icon_file && app->icon_file_size > 0) {
+        NSData *iconData = [NSData dataWithBytes:app->icon_file length:app->icon_file_size];
+        game.icon = [UIImage imageWithData:iconData];
+    }
+    NSMutableArray<LibretroSymbianGamePackage *> *packageItems = [NSMutableArray arrayWithCapacity:package_count];
+    if (packages && package_count > 0) {
+        for (uint32_t i = 0; i < package_count; ++i) {
+            const retro_eka2l1_install_game_package *pkg = &packages[i];
+            LibretroSymbianGamePackage *item = [LibretroSymbianGamePackage new];
+            item.uid = (NSInteger)pkg->uid;
+            item.index = (NSInteger)pkg->index;
+            item.packageName = LibretroSymbianNonEmptyUTF8String(pkg->package_name);
+            item.vendorName = LibretroSymbianNonEmptyUTF8String(pkg->vendor_name);
+            [packageItems addObject:item];
+        }
+    }
+    game.packages = packageItems;
+    return game;
+}
+
+static LibretroSymbianGame *LibretroSymbianGameFromInstallResult(const retro_eka2l1_install_game_result *result) {
+    if (!result) {
+        return nil;
+    }
+    return LibretroSymbianGameFromAppAndPackages(&result->app, result->packages, result->package_count);
+}
+
+static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_game_entry *entry) {
+    if (!entry) {
+        return nil;
+    }
+    LibretroSymbianGame *game = LibretroSymbianGameFromAppAndPackages(&entry->app, entry->packages, entry->package_count);
+    return game;
+}
+
++ (void)installSymbianROM:(NSString *_Nonnull)romPath
+                 rpkgPath:(NSString *_Nullable)rpkgPath
+               completion:(void(^_Nullable)(LibretroSymbianRomInstallResult result, LibretroSymbianDevice *_Nullable device))completion {
+    NSString *rom = romPath;
+    NSString *rpkg = rpkgPath;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        LibretroSymbianRomInstallResult mappedResult = LibretroSymbianRomInstallResultUnknown;
+        LibretroSymbianDevice *device = nil;
+
+        BOOL libOwned = YES;
+        dylib_t lib = LibretroEKA2L1Open(&libOwned);
+        if (lib && LibretroEKA2L1ConfigureStorage(lib)) {
+            typedef int (*install_rom_ex_t)(const char *, const char *, retro_eka2l1_install_device_result *);
+            install_rom_ex_t install_rom_ex = (install_rom_ex_t)dylib_proc(lib, "retro_eka2l1_install_rom_ex");
+            if (install_rom_ex) {
+                retro_eka2l1_install_device_result out = {0};
+                const char *rom_c = rom.UTF8String;
+                const char *rpkg_c = rpkg.length ? rpkg.UTF8String : NULL;
+                const int err = install_rom_ex(rom_c, rpkg_c, &out);
+                mappedResult = LibretroSymbianRomResultFromError(err);
+                if (mappedResult == LibretroSymbianRomInstallResultOK) {
+                    device = LibretroSymbianDeviceFromEntry(&out.device);
+                    // Core fills out.device from an in-memory cache; if rescan wiped
+                    // the list (older cores) fall back to get_devices.
+                    if (device && !device.firmwareCode.length) {
+                        typedef const retro_eka2l1_device_entry *(*get_devices_t)(uint32_t *);
+                        get_devices_t get_devices =
+                            (get_devices_t)dylib_proc(lib, "retro_eka2l1_get_devices");
+                        if (get_devices) {
+                            uint32_t count = 0;
+                            const retro_eka2l1_device_entry *devs = get_devices(&count);
+                            if (count > 0 && devs) {
+                                device = LibretroSymbianDeviceFromEntry(&devs[count - 1]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        LibretroEKA2L1Close(lib, libOwned);
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) {
+                completion(mappedResult, device);
+            }
+        });
+    });
+}
+
++ (void)installSymbianGame:(NSString *_Nonnull)gamePath
+                completion:(void(^_Nullable)(LibretroSymbianGameInstallResult result, LibretroSymbianGame *_Nullable game))completion {
+    NSString *path = gamePath;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        LibretroSymbianGameInstallResult mappedResult = LibretroSymbianGameInstallResultUnknown;
+        LibretroSymbianGame *game = nil;
+
+        BOOL libOwned = YES;
+        dylib_t lib = LibretroEKA2L1Open(&libOwned);
+        if (lib && LibretroEKA2L1ConfigureStorage(lib)) {
+            typedef int (*install_game_t)(const char *, retro_eka2l1_install_game_result *);
+            install_game_t install_game = (install_game_t)dylib_proc(lib, "retro_eka2l1_install_game");
+            if (install_game) {
+                retro_eka2l1_install_game_result out = {0};
+                const int err = install_game(path.UTF8String, &out);
+                mappedResult = LibretroSymbianGameResultFromError(err);
+                if (mappedResult == LibretroSymbianGameInstallResultOK) {
+                    game = LibretroSymbianGameFromInstallResult(&out);
+                }
+            }
+        }
+        LibretroEKA2L1Close(lib, libOwned);
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) {
+                completion(mappedResult, game);
+            }
+        });
+    });
+}
+
++ (void)uninstallSymbianGameWithUid:(NSInteger)uid index:(NSInteger)index {
+    BOOL libOwned = YES;
+    dylib_t lib = LibretroEKA2L1Open(&libOwned);
+    if (!lib) {
+        return;
+    }
+    if (!LibretroEKA2L1ConfigureStorage(lib)) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return;
+    }
+
+    typedef bool (*uninstall_package_t)(uint32_t, int32_t);
+    uninstall_package_t uninstall_package = (uninstall_package_t)dylib_proc(lib, "retro_eka2l1_uninstall_package");
+    if (uninstall_package) {
+        uninstall_package((uint32_t)uid, (int32_t)index);
+    }
+    LibretroEKA2L1Close(lib, libOwned);
+}
+
++ (NSArray<LibretroSymbianDevice*> *_Nullable)getSymbianDevices {
+    BOOL libOwned = YES;
+    dylib_t lib = LibretroEKA2L1Open(&libOwned);
+    if (!lib) {
+        return nil;
+    }
+    if (!LibretroEKA2L1ConfigureStorage(lib)) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return nil;
+    }
+    
+    typedef const retro_eka2l1_device_entry *  (*retro_eka2l1_get_devices_t)(uint32_t *out_count);
+    retro_eka2l1_get_devices_t get_devices = (retro_eka2l1_get_devices_t)dylib_proc(lib, "retro_eka2l1_get_devices");
+    
+    NSArray<LibretroSymbianDevice *> *result = nil;
+    if (get_devices) {
+        uint32_t count = 0;
+        const retro_eka2l1_device_entry *devs = get_devices(&count);
+        NSMutableArray<LibretroSymbianDevice *> *items = NSMutableArray.new;
+        for (uint32_t i = 0; i < count && devs; ++i) {
+            const retro_eka2l1_device_entry *d = &devs[i];
+            LibretroSymbianDevice *device = LibretroSymbianDeviceFromEntry(d);
+            if (device) {
+                [items addObject:device];
+            }
+        }
+        if (items.count > 0) {
+            result = items;
+        }
+    }
+    LibretroEKA2L1Close(lib, libOwned);
+    return result;
+}
+
++ (BOOL)isSymbianRomNeedsRpkg:(NSString *_Nonnull)romPath {
+    BOOL libOwned = YES;
+    dylib_t lib = LibretroEKA2L1Open(&libOwned);
+    if (!lib) {
+        return NO;
+    }
+    if (!LibretroEKA2L1ConfigureStorage(lib)) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return NO;
+    }
+    
+    typedef bool (*rom_needs_rpkg_t)(const char *);
+    rom_needs_rpkg_t rom_needs_rpkg = (rom_needs_rpkg_t)dylib_proc(lib, "retro_eka2l1_rom_needs_rpkg");
+    if (!rom_needs_rpkg) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return NO;
+    }
+    BOOL result = rom_needs_rpkg([romPath UTF8String]);
+    LibretroEKA2L1Close(lib, libOwned);
+    return result;
+}
+
++ (NSArray<LibretroSymbianGame*> *_Nullable)getSymbianGamesForDeviceIndex:(NSInteger)deviceIndex
+                                                                appKinds:(LibretroSymbianAppKind)appKinds {
+    BOOL libOwned = YES;
+    dylib_t lib = LibretroEKA2L1Open(&libOwned);
+    if (!lib) {
+        return nil;
+    }
+    if (!LibretroEKA2L1ConfigureStorage(lib)) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return nil;
+    }
+
+    typedef const retro_eka2l1_game_entry *(*get_games_t)(uint32_t, uint32_t, uint32_t *);
+    get_games_t get_games = (get_games_t)dylib_proc(lib, "retro_eka2l1_get_games");
+
+    NSArray<LibretroSymbianGame *> *result = nil;
+    if (get_games) {
+        uint32_t count = 0;
+        const retro_eka2l1_game_entry *games = get_games((uint32_t)deviceIndex, (uint32_t)appKinds, &count);
+        NSMutableArray<LibretroSymbianGame *> *items = [NSMutableArray arrayWithCapacity:count];
+        for (uint32_t i = 0; i < count && games; ++i) {
+            LibretroSymbianGame *game = LibretroSymbianGameFromGameEntry(&games[i]);
+            if (game) {
+                [items addObject:game];
+            }
+        }
+        if (items.count > 0) {
+            result = items;
+        }
+    }
+
+    LibretroEKA2L1Close(lib, libOwned);
+    return result;
+}
+
++ (void)shutdownSymbianManagementSession {
+    LibretroEKA2L1ShutdownManagement();
+}
+
++ (void)uninstallSymbianDeviceWithFirmwareCode:(NSString *_Nonnull)FirmwareCode {
+    BOOL libOwned = YES;
+    dylib_t lib = LibretroEKA2L1Open(&libOwned);
+    if (!lib) {
+        return;
+    }
+    if (!LibretroEKA2L1ConfigureStorage(lib)) {
+        LibretroEKA2L1Close(lib, libOwned);
+        return;
+    }
+
+    typedef bool (*uninstall_rom_t)(const char *);
+    uninstall_rom_t uninstall_rom = (uninstall_rom_t)dylib_proc(lib, "retro_eka2l1_uninstall_rom");
+    if (uninstall_rom) {
+        uninstall_rom([FirmwareCode UTF8String]);
+    }
+    LibretroEKA2L1Close(lib, libOwned);
+}
+
 
 @end

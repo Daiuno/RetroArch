@@ -16,6 +16,7 @@
 #import "LibretroDisk.h"
 #import "LibretroPSPGame.h"
 #import "LibretroHost.h"
+#import "LibretroSymbian.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -167,6 +168,29 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 + (void)clearPreviewCache;
 
 #pragma mark - Netplay
+/**
+ [{
+ "hasPassword": false,
+ "coreVersion": "(SVN) 5cd4a43",
+ "retroarchVersion": "1.22.2",
+ "port": 55435,
+ "mitmAddress": null,
+ "hostMethod": "unknown",
+ "frontend": "darwin ARMv8",
+ "subsystemName": "N/A",
+ "contentCRC": 1223877203,
+ "address": "122.118.108.39",
+ "connectable": false,
+ "mitmPort": 0,
+ "hasSpectatePassword": false,
+ "mitmSession": null,
+ "coreName": "FCEUmm",
+ "nickname": "Anonymous",
+ "country": "tw",
+ "isLan": false,
+ "content": "Battle City (Bootleg) (VS)"
+}]
+ */
 /// Start netplay as a game host (game must already be loaded; content will be reloaded)
 /// @param nickname Netplay nickname shown in LAN/lobby discovery. Empty keeps the current config (Anonymous if unset)
 /// Result is delivered via LibretroNetplayEventNotification HostStarted
@@ -185,6 +209,28 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)disconnectNetplay;
 /// Whether the currently loaded core supports netplay (call after loading a game)
 - (BOOL)currentCoreSupportsNetplay;
+
+#pragma mark - Symbian
++ (void)installSymbianROM:(NSString *_Nonnull)romPath
+                 rpkgPath:(NSString *_Nullable)rpkgPath
+               completion:(void(^_Nullable)(LibretroSymbianRomInstallResult result, LibretroSymbianDevice *_Nullable device))completion;
++ (void)installSymbianGame:(NSString *_Nonnull)gamePath
+                completion:(void(^_Nullable)(LibretroSymbianGameInstallResult result, LibretroSymbianGame *_Nullable game))completion;
++ (void)uninstallSymbianGameWithUid:(NSInteger)uid index:(NSInteger)index;
++ (NSArray<LibretroSymbianDevice*> *_Nullable)getSymbianDevices;
++ (BOOL)isSymbianRomNeedsRpkg:(NSString *_Nonnull)romPath;
++ (NSArray<LibretroSymbianGame*> *_Nullable)getSymbianGamesForDeviceIndex:(NSInteger)deviceIndex
+                                                                appKinds:(LibretroSymbianAppKind)appKinds;
++ (void)uninstallSymbianDeviceWithFirmwareCode:(NSString *_Nonnull)FirmwareCode;
+/// Drop a cached EKA2L1 management session (firmware/game list/install). Called
+/// automatically when loading a non-EKA2L1 core. Guest play uses unload/deinit.
++ (void)shutdownSymbianManagementSession;
+- (void)registerEKA2L1InputDialog:(void(^ _Nullable)(NSString *_Nullable initialText, NSInteger maxLength))inputCallback
+                   questionDialog:(void(^ _Nullable)(NSString *_Nonnull text, NSString *_Nullable buttonYes, NSString *_Nullable buttonNo))questionCallback;
+/// Pass user-entered text. `nil` or `@""` cancels the text-input dialog.
+- (void)submitEKA2L1Input:(NSString *_Nullable)text;
+/// `value`: 1 = user tapped `buttonYes`, 0 = user tapped `buttonNo`. Unrelated to text-input dialogs.
+- (void)submitEKA2L1QuestionResponse:(NSInteger)value;
 
 @end
 
