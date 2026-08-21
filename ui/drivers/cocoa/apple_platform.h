@@ -150,6 +150,7 @@ UINavigationControllerDelegate> {
 - (id _Nullable)getDiskInfo;
 - (BOOL)insertDisk:(NSString *_Nonnull)path;
 - (void)setPSXAnalog:(BOOL)isAnalog;
+- (void)setWiiRemote:(BOOL)willRemote;
 - (void)setReloadDelay:(double)delay;
 - (void)turnOffHardcode;
 - (void)resetRetroAchievements;

@@ -2424,6 +2424,19 @@ bool set_shader_preset(const char * _Nullable preset_path)
     }
 }
 
+- (void)setWiiRemote:(BOOL)willRemote {
+    // Dolphin: WiiMote = RETRO_DEVICE_JOYPAD (1);
+    // WiiMote + Classic Controller Pro = (5 << 8) | RETRO_DEVICE_JOYPAD (1281).
+    unsigned device = willRemote ? 1 : 1281;
+    for (unsigned i = 0; i < 4; i++) {
+        retro_ctx_controller_info_t pad;
+        pad.port   = i;
+        pad.device = device;
+        core_set_controller_port_device(&pad);
+        input_config_set_device(i, device);
+    }
+}
+
 static double needToLoadStateDelay = 0;
 - (void)setReloadDelay:(double)delay {
     needToLoadStateDelay = delay;

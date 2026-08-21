@@ -710,6 +710,10 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     [[self getRetroArch] setPSXAnalog:isAnalog];
 }
 
+- (void)setWiiRemote:(BOOL)willRemote {
+    [[self getRetroArch] setWiiRemote:willRemote];
+}
+
 - (void)setReloadDelay:(double)delay {
     [[self getRetroArch] setReloadDelay:delay];
 }

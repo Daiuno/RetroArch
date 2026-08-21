@@ -136,6 +136,8 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (LibretroDisk *_Nullable)getDiskInfo;
 - (BOOL)insertDisk:(NSString *_Nonnull)path;
 - (void)setPSXAnalog:(BOOL)isAnalog;
+/// YES: Wii Remote. NO: Classic Controller Pro.
+- (void)setWiiRemote:(BOOL)willRemote;
 - (void)setReloadDelay:(double)delay;
 - (void)turnOffHardcode;
 - (void)resetRetroAchievements;
