@@ -69,6 +69,7 @@ NSString * const DidDisconnectFromWFCNotification = @"DidDisconnectFromWFCNotifi
 NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotification";
 NSString * const LibretroNetplayEventNotification = @"LibretroNetplayEventNotification";
 NSString * const FirmwareNoSupportNotification = @"FirmwareNoSupportNotification";
+NSString * const AmigaBiosMissingNotification = @"AmigaBiosMissingNotification";
 
 static BOOL LibretroPathLooksLikeEKA2L1(NSString *corePath);
 static void LibretroEKA2L1ShutdownManagement(void);
@@ -1003,6 +1004,8 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
                 });
             } else if ([logMessage containsString:@"[EKA2L1] Firmware doesn't support Symbian App"]) {
                 [[NSNotificationCenter defaultCenter] postNotificationName:FirmwareNoSupportNotification object:nil];
+            } else if ([logMessage containsString:@"Kickstart ROM"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:AmigaBiosMissingNotification object:logMessage];
             }
             break;
         default:
