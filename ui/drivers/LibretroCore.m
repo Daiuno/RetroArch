@@ -972,15 +972,13 @@ static BOOL g_enableMonitorLibretroLog = NO;
 
 static NSString *g_mameMissingFileLog = nil;
 static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_list args) {
+    char buffer[4096];
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    NSString *logMessage = [NSString stringWithUTF8String:buffer] ?: @"";
+
     if (!g_enableMonitorLibretroLog) {
         return;
     }
-    // Format strings using va_list
-    char buffer[4096];
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    
-    // Output according to log level.
-    NSString *logMessage = [NSString stringWithUTF8String:buffer];
     
     if ([logMessage containsString:@" NOT FOUND (tried in "]) {
         if (g_mameMissingFileLog && g_mameMissingFileLog.length > 0) {
@@ -1272,8 +1270,8 @@ static void azahar_keyboard_request_callback(
         return nil;
     }
     
-    typedef const char* (*retro_get_psp_gameid_t)(const char*);
-    retro_get_psp_gameid_t get_psp_gameid = (retro_get_psp_gameid_t)dylib_proc(lib, "retro_get_psp_gameid");
+    typedef const char* (*retro_ppsspp_get_gameid_t)(const char*);
+    retro_ppsspp_get_gameid_t get_psp_gameid = (retro_ppsspp_get_gameid_t)dylib_proc(lib, "retro_ppsspp_get_gameid");
     if (!get_psp_gameid) {
         dylib_close(lib);
         return nil;
@@ -1309,16 +1307,16 @@ static void azahar_keyboard_request_callback(
         const char *gamePath;
         const void *iconData;
         int iconSize;
-    } PSPZipInstallResult;
+    } retro_ppsspp_zip_install_result;
 
-    typedef const PSPZipInstallResult* (*retro_install_psp_zip_t)(const char*, const char*);
-    retro_install_psp_zip_t install_psp_zip = (retro_install_psp_zip_t)dylib_proc(lib, "retro_install_psp_zip");
+    typedef const retro_ppsspp_zip_install_result* (*retro_ppsspp_install_zip_t)(const char*, const char*);
+    retro_ppsspp_install_zip_t install_psp_zip = (retro_ppsspp_install_zip_t)dylib_proc(lib, "retro_ppsspp_install_zip");
     if (!install_psp_zip) {
         dylib_close(lib);
         return nil;
     }
 
-    const PSPZipInstallResult *result = install_psp_zip([zipPath UTF8String], [destDir UTF8String]);
+    const retro_ppsspp_zip_install_result *result = install_psp_zip([zipPath UTF8String], [destDir UTF8String]);
     LibretroPSPGame *game = nil;
 
     if (result && result->success) {
