@@ -997,6 +997,9 @@ enum
 
 static BOOL LibretroInitial = false;
 static BOOL RespectSilentMode = false;
+// App-level pause/resume. RUNLOOP_FLAG_PAUSED can lag until the next iterate,
+// so resume() then immediate isPaused() would otherwise still report paused.
+static BOOL ManicPaused = false;
 - (void)startWithCustomSaveDir:(NSString *_Nullable)customSaveDir {
     if (LibretroInitial) {
         return;
@@ -1006,6 +1009,7 @@ static BOOL RespectSilentMode = false;
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];
     
     LibretroInitial = true;
+    ManicPaused = false;
     set_libretro_is_going_to_stop(false);
     char arguments[]   = "retroarch";
     char       *argv[] = {arguments,   NULL};
@@ -1038,22 +1042,19 @@ static BOOL RespectSilentMode = false;
 
 - (void)pause {
     if (!LibretroInitial) { return; }
+    ManicPaused = YES;
     command_event(CMD_EVENT_PAUSE, NULL);
     rarch_stop_draw_observer();
 }
 
 - (BOOL)isPaused {
-    BOOL isPause = NO;
-    uint32_t runloop_flags = runloop_get_flags();
-    if (runloop_flags & RUNLOOP_FLAG_PAUSED) {
-        isPause = YES;
-    }
-    return isPause;
+    return ManicPaused;
 }
 
 - (void)stop {
     if (!LibretroInitial) { return; }
     LibretroInitial = false;
+    ManicPaused = false;
     set_libretro_is_going_to_stop(true);
     command_event(CMD_EVENT_CLOSE_CONTENT, NULL);
     command_event(CMD_EVENT_UNLOAD_CORE, NULL);
@@ -1066,18 +1067,20 @@ static BOOL RespectSilentMode = false;
 
 - (void)resume {
     if (!LibretroInitial) { return; }
-    
-    // 保存当前的快进状态
+
+    ManicPaused = NO;
+
     float currentFastforwardRate = g_custom_fastforward_ratio;
     BOOL isFastforwarding = (g_custom_fastforward_ratio > 0.0f);
     
     rarch_start_draw_observer();
-    
+
+    // UNPAUSE clears RUNLOOP_FLAG_PAUSED immediately; RESUME only closes the RA menu.
+    command_event(CMD_EVENT_UNPAUSE, NULL);
     command_event(CMD_EVENT_RESUME, NULL);
     if (needToLoadStatePath) {
         [self loadGame:self.gamePath corePath:self.corePath completion:nil];
         
-        // 恢复快进状态（如果之前处于快进模式）
         if (isFastforwarding) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 [self fastForward:currentFastforwardRate];
@@ -1094,7 +1097,6 @@ static BOOL RespectSilentMode = false;
             needToLoadStatePath = nil;
         }
     } else if (isFastforwarding) {
-        // 如果没有需要加载的存档，但是之前处于快进状态，恢复快进
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self fastForward:currentFastforwardRate];
         });
@@ -2293,12 +2295,13 @@ bool set_shader_preset(const char * _Nullable preset_path)
 - (void)setDiskIndex:(unsigned)index delay:(BOOL)delay {
     command_event(CMD_EVENT_DISK_EJECT_TOGGLE, NULL);
     if (delay) {
+        BOOL wasPaused = [self isPaused];
         [self resume];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             unsigned mutableIndex = index;
             command_event(CMD_EVENT_DISK_INDEX, &mutableIndex);
             command_event(CMD_EVENT_DISK_EJECT_TOGGLE, NULL);
-            if ([self isPaused]) {
+            if (wasPaused) {
                 [self pause];
             }
         });

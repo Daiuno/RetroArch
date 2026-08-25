@@ -719,6 +719,8 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     [[self getRetroArch] setReloadDelay:delay];
 }
 
+#pragma mark - RetroAchievements
+
 + (CheevosAchievement *)convertAchievement:(rc_client_achievement_t *)a {
     if ([[NSString stringWithUTF8String:a->badge_name] isEqualToString:@"00000"]) {
         return nil;

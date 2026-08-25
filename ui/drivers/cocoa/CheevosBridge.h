@@ -20,7 +20,18 @@
 
 @end
 
-@interface CheevosAchievement : NSObject
+@interface CheevosSubset : NSObject <NSSecureCoding>
+
+@property (nonatomic, assign) NSInteger _id;
+@property (nonatomic, copy) NSString *_Nullable title;
+@property (nonatomic, copy) NSString *_Nullable badgeName;
+@property (nonatomic, copy) NSString *_Nullable badgeUrl;
+@property (nonatomic, assign) NSInteger numAchievements;
+@property (nonatomic, assign) BOOL isCore;
+
+@end
+
+@interface CheevosAchievement : NSObject <NSSecureCoding>
 
 @property (nonatomic, copy) NSString *_Nullable title;
 @property (nonatomic, copy) NSString *_Nullable _description;
@@ -47,10 +58,12 @@
 @property (nonatomic, assign) BOOL isProgressAchievement;
 @property (nonatomic, assign) BOOL isChallengeAchievement;
 @property (nonatomic, assign) BOOL show;
+@property (nonatomic, assign) NSInteger subsetId;
+@property (nonatomic, copy) NSString *_Nullable subsetTitle;
 
 @end
 
-@interface CheevosGame : NSObject
+@interface CheevosGame : NSObject <NSSecureCoding>
 
 @property (nonatomic, copy) NSString *_Nullable title;
 @property (nonatomic, copy) NSString *_Nullable _hash;
@@ -58,6 +71,7 @@
 @property (nonatomic, assign) NSInteger _id;
 @property (nonatomic, assign) NSInteger console_id;
 @property (nonatomic, copy) NSArray<CheevosAchievement*>* _Nullable achievements;
+@property (nonatomic, copy) NSArray<CheevosSubset*>* _Nullable subsets;
 @property (nonatomic, copy) NSString *_Nullable badgeUrl;
 @property (nonatomic, assign) BOOL notSupportHardcore;
 
@@ -141,7 +155,13 @@ typedef void(^GetGameInfoCompletion)(GetGameInfoResult result, CheevosGame * _Nu
 
 + (void)LogoutCheevos;
 
++ (CheevosGame * _Nullable)cachedGameInfoForPath:(NSString * _Nonnull)gamePath;
+
 + (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+                  callback:(GetGameInfoCompletion _Nullable)callback;
+
++ (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+         reuseInGameClient:(BOOL)reuseInGameClient
                   callback:(GetGameInfoCompletion _Nullable)callback;
 
 @end

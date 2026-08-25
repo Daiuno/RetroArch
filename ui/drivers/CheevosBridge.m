@@ -7,6 +7,7 @@
 ////
 
 #import <Foundation/Foundation.h>
+#import <CommonCrypto/CommonDigest.h>
 #import "CheevosBridge.h"
 // 必须在包含 rc_client.h 之前定义
 #define RC_CLIENT_SUPPORTS_HASH 1
@@ -29,10 +30,131 @@
 @implementation CheevosGameInfoCtx
 @end
 
-@implementation CheevosGame
+@implementation CheevosSubset
+
++ (BOOL)supportsSecureCoding { return YES; }
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeInteger:self._id forKey:@"id"];
+    [coder encodeObject:self.title forKey:@"title"];
+    [coder encodeObject:self.badgeName forKey:@"badgeName"];
+    [coder encodeObject:self.badgeUrl forKey:@"badgeUrl"];
+    [coder encodeInteger:self.numAchievements forKey:@"numAchievements"];
+    [coder encodeBool:self.isCore forKey:@"isCore"];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+    self._id = [coder decodeIntegerForKey:@"id"];
+    self.title = [coder decodeObjectOfClass:[NSString class] forKey:@"title"];
+    self.badgeName = [coder decodeObjectOfClass:[NSString class] forKey:@"badgeName"];
+    self.badgeUrl = [coder decodeObjectOfClass:[NSString class] forKey:@"badgeUrl"];
+    self.numAchievements = [coder decodeIntegerForKey:@"numAchievements"];
+    self.isCore = [coder decodeBoolForKey:@"isCore"];
+    return self;
+}
+
 @end
 
 @implementation CheevosAchievement
+
++ (BOOL)supportsSecureCoding { return YES; }
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.title forKey:@"title"];
+    [coder encodeObject:self._description forKey:@"description"];
+    [coder encodeObject:self.badgeName forKey:@"badgeName"];
+    [coder encodeObject:self.measuredProgress forKey:@"measuredProgress"];
+    [coder encodeDouble:self.measuredPercent forKey:@"measuredPercent"];
+    [coder encodeInteger:self._id forKey:@"id"];
+    [coder encodeInteger:self.points forKey:@"points"];
+    [coder encodeObject:self.unlockTime forKey:@"unlockTime"];
+    [coder encodeInteger:self.state forKey:@"state"];
+    [coder encodeInteger:self.category forKey:@"category"];
+    [coder encodeInteger:self.bucket forKey:@"bucket"];
+    [coder encodeBool:self.unlocked forKey:@"unlocked"];
+    [coder encodeBool:self.hardcoreUnlocked forKey:@"hardcoreUnlocked"];
+    [coder encodeBool:self.softcoreUnlocked forKey:@"softcoreUnlocked"];
+    [coder encodeDouble:self.rarity forKey:@"rarity"];
+    [coder encodeDouble:self.rarityHardcore forKey:@"rarityHardcore"];
+    [coder encodeInteger:self.type forKey:@"type"];
+    [coder encodeObject:self.unlockedBadgeUrl forKey:@"unlockedBadgeUrl"];
+    [coder encodeObject:self.activeBadgeUrl forKey:@"activeBadgeUrl"];
+    [coder encodeBool:self.isMissable forKey:@"isMissable"];
+    [coder encodeBool:self.isProgression forKey:@"isProgression"];
+    [coder encodeInteger:self.subsetId forKey:@"subsetId"];
+    [coder encodeObject:self.subsetTitle forKey:@"subsetTitle"];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+    self.title = [coder decodeObjectOfClass:[NSString class] forKey:@"title"];
+    self._description = [coder decodeObjectOfClass:[NSString class] forKey:@"description"];
+    self.badgeName = [coder decodeObjectOfClass:[NSString class] forKey:@"badgeName"];
+    self.measuredProgress = [coder decodeObjectOfClass:[NSString class] forKey:@"measuredProgress"];
+    self.measuredPercent = [coder decodeDoubleForKey:@"measuredPercent"];
+    self._id = [coder decodeIntegerForKey:@"id"];
+    self.points = [coder decodeIntegerForKey:@"points"];
+    self.unlockTime = [coder decodeObjectOfClass:[NSDate class] forKey:@"unlockTime"];
+    self.state = [coder decodeIntegerForKey:@"state"];
+    self.category = [coder decodeIntegerForKey:@"category"];
+    self.bucket = [coder decodeIntegerForKey:@"bucket"];
+    self.unlocked = [coder decodeBoolForKey:@"unlocked"];
+    self.hardcoreUnlocked = [coder decodeBoolForKey:@"hardcoreUnlocked"];
+    self.softcoreUnlocked = [coder decodeBoolForKey:@"softcoreUnlocked"];
+    self.rarity = [coder decodeDoubleForKey:@"rarity"];
+    self.rarityHardcore = [coder decodeDoubleForKey:@"rarityHardcore"];
+    self.type = [coder decodeIntegerForKey:@"type"];
+    self.unlockedBadgeUrl = [coder decodeObjectOfClass:[NSString class] forKey:@"unlockedBadgeUrl"];
+    self.activeBadgeUrl = [coder decodeObjectOfClass:[NSString class] forKey:@"activeBadgeUrl"];
+    self.isMissable = [coder decodeBoolForKey:@"isMissable"];
+    self.isProgression = [coder decodeBoolForKey:@"isProgression"];
+    self.subsetId = [coder decodeIntegerForKey:@"subsetId"];
+    self.subsetTitle = [coder decodeObjectOfClass:[NSString class] forKey:@"subsetTitle"];
+    return self;
+}
+
+@end
+
+@implementation CheevosGame
+
++ (BOOL)supportsSecureCoding { return YES; }
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.title forKey:@"title"];
+    [coder encodeObject:self._hash forKey:@"hash"];
+    [coder encodeObject:self.badgeName forKey:@"badgeName"];
+    [coder encodeInteger:self._id forKey:@"id"];
+    [coder encodeInteger:self.console_id forKey:@"console_id"];
+    [coder encodeObject:self.achievements forKey:@"achievements"];
+    [coder encodeObject:self.subsets forKey:@"subsets"];
+    [coder encodeObject:self.badgeUrl forKey:@"badgeUrl"];
+    [coder encodeBool:self.notSupportHardcore forKey:@"notSupportHardcore"];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+    self.title = [coder decodeObjectOfClass:[NSString class] forKey:@"title"];
+    self._hash = [coder decodeObjectOfClass:[NSString class] forKey:@"hash"];
+    self.badgeName = [coder decodeObjectOfClass:[NSString class] forKey:@"badgeName"];
+    self._id = [coder decodeIntegerForKey:@"id"];
+    self.console_id = [coder decodeIntegerForKey:@"console_id"];
+    self.achievements = [coder decodeArrayOfObjectsOfClass:[CheevosAchievement class] forKey:@"achievements"];
+    self.subsets = [coder decodeArrayOfObjectsOfClass:[CheevosSubset class] forKey:@"subsets"];
+    self.badgeUrl = [coder decodeObjectOfClass:[NSString class] forKey:@"badgeUrl"];
+    self.notSupportHardcore = [coder decodeBoolForKey:@"notSupportHardcore"];
+    return self;
+}
+
 @end
 
 @implementation CheevosUser
@@ -48,6 +170,32 @@
 @end
 
 @implementation CheevosLeaderboard
+@end
+
+@interface CheevosGameCacheRecord : NSObject <NSSecureCoding>
+@property (nonatomic, strong) NSDate *savedAt;
+@property (nonatomic, strong) CheevosGame *game;
+@end
+
+@implementation CheevosGameCacheRecord
+
++ (BOOL)supportsSecureCoding { return YES; }
+
+- (void)encodeWithCoder:(NSCoder *)coder {
+    [coder encodeObject:self.savedAt forKey:@"savedAt"];
+    [coder encodeObject:self.game forKey:@"game"];
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+    self.savedAt = [coder decodeObjectOfClass:[NSDate class] forKey:@"savedAt"];
+    self.game = [coder decodeObjectOfClass:[CheevosGame class] forKey:@"game"];
+    return self;
+}
+
 @end
 
 @implementation CheevosBridge
@@ -144,6 +292,123 @@ static uint32_t dummy_read_memory(uint32_t address, uint8_t* buffer, uint32_t nu
     return 0;
 }
 
+static const NSTimeInterval kCheevosGameCacheTTL = 24.0 * 60.0 * 60.0;
+
+static NSCache<NSString *, CheevosGame *> *gameInfoMemoryCache(void) {
+    static NSCache<NSString *, CheevosGame *> *cache = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cache = [NSCache new];
+        cache.countLimit = 32;
+        cache.name = @"CheevosGameInfo";
+    });
+    return cache;
+}
+
+static dispatch_queue_t gameInfoDiskQueue(void) {
+    static dispatch_queue_t queue = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        queue = dispatch_queue_create("com.aoshuang.manicemu.cheevos.game-cache", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+static NSString *cacheKeyForPath(NSString *path) {
+    const char *bytes = path.UTF8String ?: "";
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(bytes, (CC_LONG)strlen(bytes), digest);
+    NSMutableString *hex = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+    for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+        [hex appendFormat:@"%02x", digest[i]];
+    }
+    return hex;
+}
+
+static NSURL *gameInfoCacheDirectoryURL(void) {
+    NSURL *caches = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL *dir = [caches URLByAppendingPathComponent:@"CheevosGameInfo" isDirectory:YES];
+    [[NSFileManager defaultManager] createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    return dir;
+}
+
+static NSURL *gameInfoCacheFileURL(NSString *path) {
+    return [gameInfoCacheDirectoryURL() URLByAppendingPathComponent:[cacheKeyForPath(path) stringByAppendingPathExtension:@"archive"]];
+}
+
+static NSSet<Class> *gameInfoCacheAllowedClasses(void) {
+    return [NSSet setWithObjects:[CheevosGameCacheRecord class], [CheevosGame class],
+            [CheevosSubset class], [CheevosAchievement class], [NSArray class],
+            [NSString class], [NSDate class], [NSNumber class], nil];
+}
+
+static CheevosGame *loadGameInfoFromDisk(NSString *path) {
+    NSURL *fileURL = gameInfoCacheFileURL(path);
+    NSData *data = [NSData dataWithContentsOfURL:fileURL];
+    if (!data) {
+        return nil;
+    }
+    NSError *error = nil;
+    CheevosGameCacheRecord *record = [NSKeyedUnarchiver unarchivedObjectOfClasses:gameInfoCacheAllowedClasses()
+                                                                         fromData:data
+                                                                            error:&error];
+    if (![record isKindOfClass:[CheevosGameCacheRecord class]] || !record.game || !record.savedAt) {
+        [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+        return nil;
+    }
+    if ([[NSDate date] timeIntervalSinceDate:record.savedAt] > kCheevosGameCacheTTL) {
+        [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+        return nil;
+    }
+    return record.game;
+}
+
+static void writeGameInfoToDisk(NSString *path, CheevosGame *game) {
+    CheevosGameCacheRecord *record = [CheevosGameCacheRecord new];
+    record.savedAt = [NSDate date];
+    record.game = game;
+    NSError *error = nil;
+    NSData *data = [NSKeyedArchiver archivedDataWithRootObject:record requiringSecureCoding:YES error:&error];
+    if (!data) {
+        return;
+    }
+    [data writeToURL:gameInfoCacheFileURL(path) atomically:YES];
+}
+
+static void cacheGameInfo(NSString *path, CheevosGame *game) {
+    if (path.length == 0 || !game) {
+        return;
+    }
+    [gameInfoMemoryCache() setObject:game forKey:path];
+    dispatch_async(gameInfoDiskQueue(), ^{
+        writeGameInfoToDisk(path, game);
+    });
+}
+
+static CheevosGame *cachedGameInfo(NSString *path) {
+    if (path.length == 0) {
+        return nil;
+    }
+    CheevosGame *memory = [gameInfoMemoryCache() objectForKey:path];
+    if (memory) {
+        return memory;
+    }
+    CheevosGame *disk = loadGameInfoFromDisk(path);
+    if (disk) {
+        [gameInfoMemoryCache() setObject:disk forKey:path];
+    }
+    return disk;
+}
+
+static void clearGameInfoCache(void) {
+    [gameInfoMemoryCache() removeAllObjects];
+    dispatch_async(gameInfoDiskQueue(), ^{
+        NSURL *dir = gameInfoCacheDirectoryURL();
+        [[NSFileManager defaultManager] removeItemAtURL:dir error:nil];
+        [[NSFileManager defaultManager] createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    });
+}
+
 static rc_client_t* ensure_client(void) {
     static rc_client_t* client = NULL;
     if (!client) {
@@ -196,13 +461,21 @@ static CheevosAchievement* buildAchievementObj(const rc_client_achievement_t* a)
     if (a->type & RC_CLIENT_ACHIEVEMENT_TYPE_PROGRESSION) {
         obj.isProgression = YES;
     }
-    char url1[256];
-    if (rc_client_achievement_get_image_url(a, RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED, url1, sizeof(url1)) == RC_OK) {
-        obj.unlockedBadgeUrl = [NSString stringWithCString:url1 encoding:NSUTF8StringEncoding];
+    if (a->badge_url && a->badge_url[0]) {
+        obj.unlockedBadgeUrl = [NSString stringWithUTF8String:a->badge_url];
+    } else {
+        char url1[256];
+        if (rc_client_achievement_get_image_url(a, RC_CLIENT_ACHIEVEMENT_STATE_UNLOCKED, url1, sizeof(url1)) == RC_OK) {
+            obj.unlockedBadgeUrl = [NSString stringWithCString:url1 encoding:NSUTF8StringEncoding];
+        }
     }
-    char url2[256];
-    if (rc_client_achievement_get_image_url(a, RC_CLIENT_ACHIEVEMENT_STATE_ACTIVE, url2, sizeof(url2)) == RC_OK) {
-        obj.activeBadgeUrl = [NSString stringWithCString:url2 encoding:NSUTF8StringEncoding];
+    if (a->badge_locked_url && a->badge_locked_url[0]) {
+        obj.activeBadgeUrl = [NSString stringWithUTF8String:a->badge_locked_url];
+    } else {
+        char url2[256];
+        if (rc_client_achievement_get_image_url(a, RC_CLIENT_ACHIEVEMENT_STATE_ACTIVE, url2, sizeof(url2)) == RC_OK) {
+            obj.activeBadgeUrl = [NSString stringWithCString:url2 encoding:NSUTF8StringEncoding];
+        }
     }
     return obj;
 }
@@ -221,37 +494,79 @@ static CheevosGame* buildGameObj(rc_client_t* client) {
     game._id = (NSInteger)g->id;
     game.console_id = (NSInteger)g->console_id;
 
+    NSMutableArray<CheevosSubset*>* subsetArr = [NSMutableArray array];
+    NSMutableDictionary<NSNumber*, CheevosSubset*>* subsetById = [NSMutableDictionary dictionary];
+    rc_client_subset_list_t* subset_list = rc_client_create_subset_list(client);
+    if (subset_list) {
+        for (uint32_t i = 0; i < subset_list->num_subsets; i++) {
+            const rc_client_subset_t* s = subset_list->subsets[i];
+            if (!s) {
+                continue;
+            }
+            CheevosSubset* obj = [CheevosSubset new];
+            obj._id = (NSInteger)s->id;
+            obj.title = s->title ? [NSString stringWithUTF8String:s->title] : nil;
+            obj.badgeName = s->badge_name[0] ? [NSString stringWithUTF8String:s->badge_name] : nil;
+            obj.numAchievements = (NSInteger)s->num_achievements;
+            obj.isCore = (i == 0);
+            if (s->badge_url && s->badge_url[0]) {
+                obj.badgeUrl = [NSString stringWithUTF8String:s->badge_url];
+            }
+            [subsetArr addObject:obj];
+            subsetById[@(obj._id)] = obj;
+        }
+        rc_client_destroy_subset_list(subset_list);
+    }
+    game.subsets = subsetArr;
+    NSInteger fallbackSubsetId = subsetArr.firstObject ? subsetArr.firstObject._id : 0;
+
+    /* LOCK_STATE puts each achievement in a per-subset bucket so subset_id is reliable. */
     rc_client_achievement_list_t* list =
         rc_client_create_achievement_list(client,
             RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE_AND_UNOFFICIAL,
-            RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
+            RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
 
     if (list) {
         NSMutableArray<CheevosAchievement*>* arr = [NSMutableArray array];
+        NSMutableSet<NSNumber*>* seen = [NSMutableSet set];
         for (uint32_t b = 0; b < list->num_buckets; b++) {
-            rc_client_achievement_bucket_t* bucket = &list->buckets[b];
+            const rc_client_achievement_bucket_t* bucket = &list->buckets[b];
             if (bucket->bucket_type == RC_CLIENT_ACHIEVEMENT_BUCKET_LOCKED && bucket->num_achievements == 1) {
-                rc_client_achievement_t* a = bucket->achievements[0];
+                const rc_client_achievement_t* a = bucket->achievements[0];
                 if (a->description && [[NSString stringWithCString:a->description encoding:NSUTF8StringEncoding] containsString:@"Hardcore unlocks cannot be earned"]) {
-                    //如果Manic EMU没有获得RetroAchievements的审核认证，则不支持开启Hardcore
+                    /* RA has not certified this client for Hardcore. */
                     game.notSupportHardcore = YES;
                     continue;
                 }
-                
             }
+            NSInteger subsetId = bucket->subset_id ? (NSInteger)bucket->subset_id : fallbackSubsetId;
+            CheevosSubset* subset = subsetById[@(subsetId)];
             for (uint32_t i = 0; i < bucket->num_achievements; i++) {
-                rc_client_achievement_t* a = bucket->achievements[i];
+                const rc_client_achievement_t* a = bucket->achievements[i];
+                if (!a || [seen containsObject:@(a->id)]) {
+                    continue;
+                }
+                [seen addObject:@(a->id)];
                 CheevosAchievement* obj = buildAchievementObj(a);
-                if (obj) [arr addObject:obj];
+                if (!obj) {
+                    continue;
+                }
+                obj.subsetId = subsetId;
+                obj.subsetTitle = subset.title;
+                [arr addObject:obj];
             }
         }
         game.achievements = arr;
         rc_client_destroy_achievement_list(list);
     }
-    
-    char url[256];
-    if (rc_client_game_get_image_url(g, url, sizeof(url)) == RC_OK) {
-        game.badgeUrl = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
+
+    if (g->badge_url && g->badge_url[0]) {
+        game.badgeUrl = [NSString stringWithUTF8String:g->badge_url];
+    } else {
+        char url[256];
+        if (rc_client_game_get_image_url(g, url, sizeof(url)) == RC_OK) {
+            game.badgeUrl = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
+        }
     }
 
     return game;
@@ -320,6 +635,9 @@ static void load_game_callback_c(int result, const char* error_message, rc_clien
     BOOL ok = (result == RC_OK) && rc_client_is_game_loaded(client);
     
     CheevosGame* game = ok ? buildGameObj(client) : nil;
+    if (game) {
+        cacheGameInfo(ctx.path, game);
+    }
 
     if (block) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -398,6 +716,8 @@ static NSString *g_password = nil;
     CheevosLoginCtx* ctx = [CheevosLoginCtx new];
     ctx.block = callback;
 
+    clearGameInfoCache();
+
     rc_client_begin_login_with_password(client,
         userName.UTF8String ?: "",
         password.UTF8String ?: "",
@@ -409,10 +729,39 @@ static NSString *g_password = nil;
     if (client) {
         rc_client_logout(client);
     }
+    clearGameInfoCache();
+}
+
++ (CheevosGame *)cachedGameInfoForPath:(NSString *)gamePath {
+    if (gamePath.length == 0) {
+        return nil;
+    }
+    return cachedGameInfo(gamePath);
+}
+
++ (void)getCheevosGameInfo:(NSString *)gamePath
+                  callback:(GetGameInfoCompletion)callback {
+    [self getCheevosGameInfo:gamePath reuseInGameClient:NO callback:callback];
 }
 
 + (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+         reuseInGameClient:(BOOL)reuseInGameClient
                   callback:(GetGameInfoCompletion _Nullable)callback {
+    if (reuseInGameClient) {
+        rc_client_t *inGameClient = (rc_client_t *)rcheevos_get_client();
+        if (inGameClient) {
+            CheevosGame *game = buildGameObj(inGameClient);
+            if (game) {
+                cacheGameInfo(gamePath, game);
+                if (callback) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        callback(GetGameInfoResultSuccess, game);
+                    });
+                }
+                return;
+            }
+        }
+    }
 
     rc_client_t* client = ensure_client();
     if (!client) {

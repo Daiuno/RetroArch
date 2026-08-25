@@ -193,7 +193,8 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
  "content": "Battle City (Bootleg) (VS)"
 }]
  */
-/// Start netplay as a game host (game must already be loaded; content will be reloaded)
+/// Start netplay as a game host (game must already be loaded and not paused).
+/// Savestate-sync cores reload content; netpacket cores (gpSP, DOSBox-pure) keep the current session.
 /// @param nickname Netplay nickname shown in LAN/lobby discovery. Empty keeps the current config (Anonymous if unset)
 /// Result is delivered via LibretroNetplayEventNotification HostStarted
 - (BOOL)startNetplayHost:(NSString * _Nullable)nickname;
@@ -203,7 +204,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)refreshNetplayHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion;
 /// Refresh the LAN netplay host list (async, callback on main thread, ~2.5s scan timeout; hosts is nil on failure)
 - (void)refreshNetplayLANHostList:(void(^ _Nullable)(NSArray<LibretroHost *> * _Nullable hosts))completion;
-/// Connect to a host as a client (the same game and core as the host must already be loaded)
+/// Connect to a host as a client (same game/core as the host must already be loaded and not paused)
 /// @param nickname Local netplay nickname, visible to the host. Empty keeps the current config (Anonymous if unset)
 /// Result is delivered via LibretroNetplayEventNotification Connected/Disconnected
 - (BOOL)connectToNetplayHost:(LibretroHost *_Nonnull)host nickname:(NSString * _Nullable)nickname;

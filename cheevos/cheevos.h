@@ -25,7 +25,7 @@
 
 RETRO_BEGIN_DECLS
 
-//定义事件回调
+// Event callback
 typedef void (*CheevosEventCallback)(uint32_t, void*, void*);
 void cheevos_event_register_callback(CheevosEventCallback callback);
 
@@ -67,6 +67,9 @@ uintptr_t rcheevos_get_badge_texture(const char* badge, bool locked, bool downlo
 uint8_t* rcheevos_patch_address(unsigned address);
 
 void rcheevos_reset_cdreader_hooks(void);
+
+/* In-session rc_client_t*, or NULL if no game is loaded. */
+void *rcheevos_get_client(void);
 
 RETRO_END_DECLS
 
