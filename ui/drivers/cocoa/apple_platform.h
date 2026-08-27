@@ -116,6 +116,7 @@ UINavigationControllerDelegate> {
 - (void)loadCoreWithoutContent:(NSString *_Nonnull)corePath;
 - (void)loadCoreWithoutRunning:(NSString *_Nonnull)corePath;
 - (NSArray<id> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath;
+- (NSArray<id> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath resetOptFile:(BOOL)resetOptFile;
 - (void)pressButton:(unsigned)button playerIndex:(unsigned)playerIndex;
 - (void)releaseButton:(unsigned)button playerIndex:(unsigned)playerIndex;
 - (void)moveStick:(BOOL)isLeft x:(CGFloat)x y:(CGFloat)y playerIndex:(unsigned)playerIndex;

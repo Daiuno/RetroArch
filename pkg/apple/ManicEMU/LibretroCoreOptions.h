@@ -23,6 +23,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *info;
 @property (nonatomic, copy) NSString *value;
 @property (nonatomic, copy) NSString *label;
+@property (nonatomic, copy) NSString *defaultValue;
+@property (nonatomic, copy) NSString *defaultLabel;
 @property (nonatomic, copy) NSArray<Options *> *options;
 @property (nonatomic, assign) BOOL visible;
 

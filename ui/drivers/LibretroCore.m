@@ -297,7 +297,11 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
 }
 
 - (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath {
-    return [[self getRetroArch] getCoreOptions:corePath];
+    return [self getCoreOptions:corePath resetOptFile:NO];
+}
+
+- (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath resetOptFile:(BOOL)resetOptFile {
+    return [[self getRetroArch] getCoreOptions:corePath resetOptFile:resetOptFile];
 }
 
 - (void)pressButton:(LibretroButton)button playerIndex:(unsigned)playerIndex {

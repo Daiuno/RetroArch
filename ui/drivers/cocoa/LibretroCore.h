@@ -101,6 +101,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)loadCoreWithoutContent:(NSString *_Nonnull)corePath;
 - (void)loadCoreWithoutRunning:(NSString *_Nonnull)corePath;
 - (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath;
+- (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath resetOptFile:(BOOL)resetOptFile;
 - (void)sendEvent:(UIEvent * _Nonnull)event;
 - (void)pressButton:(LibretroButton)button playerIndex:(unsigned)playerIndex;
 - (void)releaseButton:(LibretroButton)button playerIndex:(unsigned)playerIndex;

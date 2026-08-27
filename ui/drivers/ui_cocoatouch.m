@@ -551,7 +551,8 @@ enum
 #if TARGET_OS_IOS
 @interface RetroArch_iOS () <MXMetricManagerSubscriber, UIPointerInteractionDelegate>
 - (NSArray<CoreOptionCategory *> *_Nullable)collectCoreOptionCategories;
-- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath;
+- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath deleteOptFile:(BOOL)deleteOptFile;
+- (void)deleteCurrentCoreOptFile;
 @end
 #endif
 
@@ -1198,6 +1199,17 @@ static BOOL ManicPaused = false;
         const char *valLabel          = core_option_manager_get_val_label(opt, i);
         coreOption.label              = valLabel ? @(valLabel) : @"";
 
+        coreOption.defaultValue       = coreOption.value;
+        coreOption.defaultLabel       = coreOption.label;
+        if (option->vals && option->default_index < option->vals->size) {
+            const char *defaultVal = option->vals->elems[option->default_index].data;
+            coreOption.defaultValue = defaultVal ? @(defaultVal) : coreOption.value;
+            const char *defaultLabel = (option->val_labels && option->default_index < option->val_labels->size)
+                ? option->val_labels->elems[option->default_index].data
+                : defaultVal;
+            coreOption.defaultLabel = defaultLabel ? @(defaultLabel) : coreOption.defaultValue;
+        }
+
         NSMutableArray<Options *> *optItems = [NSMutableArray array];
         if (option->vals) {
             for (size_t j = 0; j < option->vals->size; j++) {
@@ -1259,10 +1271,10 @@ static BOOL ManicPaused = false;
     return categories.count > 0 ? [categories copy] : nil;
 }
 
-/// 仅加载核心动态库并调用 retro_set_environment（必要时再 retro_init），
-/// 让 SET_CORE_OPTIONS* / SET_VARIABLES 写入 runloop。
-/// 不走 content_load / retro_load_game，因此不要求 supports_no_game。
-- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath {
+/// Load the core dylib and call retro_set_environment (and retro_init if needed)
+/// so SET_CORE_OPTIONS* / SET_VARIABLES populate the runloop.
+/// Does not load content, so supports_no_game is not required.
+- (BOOL)probeCoreOptionsAtPath:(NSString *_Nonnull)corePath deleteOptFile:(BOOL)deleteOptFile {
     if (corePath.length == 0)
         return NO;
 
@@ -1291,7 +1303,7 @@ static BOOL ManicPaused = false;
     memset(&info, 0, sizeof(info));
     get_system_info(&info);
 
-    // library_name 用于生成 config/CoreName/CoreName.opt 路径
+    // library_name is used to build config/CoreName/CoreName.opt
     runloop_state_t *runloop_st = runloop_state_get_ptr();
     runloop_st->flags &= ~RUNLOOP_FLAG_IGNORE_ENVIRONMENT_CB;
     if (info.library_name) {
@@ -1305,11 +1317,14 @@ static BOOL ManicPaused = false;
         runloop_st->system.info.library_version = runloop_st->current_library_version;
     }
 
-    // DeSmuME 等核心在 set_environment 里就会 SET_CORE_OPTIONS
+    if (deleteOptFile)
+        [self deleteCurrentCoreOptFile];
+
+    // DeSmuME and similar cores register options inside set_environment
     set_environment(runloop_environment_cb);
 
     BOOL did_init = NO;
-    // DOSBox-pure 等核心只在 retro_init 里调用 set_variables() → SET_CORE_OPTIONS_V2
+    // DOSBox-pure only calls set_variables() inside retro_init → SET_CORE_OPTIONS_V2
     if (!(runloop_st->core_options && runloop_st->core_options->size > 0) && core_init) {
         core_init();
         did_init = YES;
@@ -1322,7 +1337,29 @@ static BOOL ManicPaused = false;
     return ok;
 }
 
+- (void)deleteCurrentCoreOptFile {
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    NSString *optPath = nil;
+    if (runloop_st && runloop_st->core_options && runloop_st->core_options->conf_path[0]) {
+        optPath = @(runloop_st->core_options->conf_path);
+    } else if (runloop_st && runloop_st->current_library_name[0]) {
+        NSString *workspace = self.workspace;
+        if (workspace.length == 0)
+            workspace = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"Libretro"];
+        optPath = [NSString stringWithFormat:@"%@/config/%s/%s.opt",
+                   workspace,
+                   runloop_st->current_library_name,
+                   runloop_st->current_library_name];
+    }
+    if (optPath.length > 0)
+        [[NSFileManager defaultManager] removeItemAtPath:optPath error:nil];
+}
+
 - (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath {
+    return [self getCoreOptions:corePath resetOptFile:NO];
+}
+
+- (NSArray<CoreOptionCategory *> *_Nullable)getCoreOptions:(NSString *_Nonnull)corePath resetOptFile:(BOOL)resetOptFile {
     if (corePath.length == 0)
         return nil;
 
@@ -1330,19 +1367,22 @@ static BOOL ManicPaused = false;
     BOOL coreRunning = LibretroInitial && runloop_st
         && (runloop_st->flags & RUNLOOP_FLAG_CORE_RUNNING);
 
-    // 游戏已在运行：直接读当前核心的选项表，不能再加载别的核心
-    if (coreRunning)
+    // Running core: read the live option table; another core cannot be loaded.
+    if (coreRunning) {
+        if (resetOptFile)
+            [self deleteCurrentCoreOptFile];
         return [self collectCoreOptionCategories];
+    }
 
-    // 残留的无内容前端（例如上次探测未及时 stop）先清掉，避免 dummy core 干扰
+    // Drop a leftover contentless frontend from a previous probe so it cannot shadow this load.
     if (LibretroInitial)
         [self stop];
 
     [self startWithCustomSaveDir:nil];
 
-    // 1) 轻量探测：set_environment（+ 必要时 retro_init），不加载内容
-    // 2) 仍为空则回退 contentless 加载，覆盖只在完整 CORE_INIT 里注册选项的 no-game 核心
-    if (![self probeCoreOptionsAtPath:corePath])
+    // 1) Light probe: set_environment (+ retro_init if needed), no content
+    // 2) Fall back to contentless load for cores that only register options in CORE_INIT
+    if (![self probeCoreOptionsAtPath:corePath deleteOptFile:resetOptFile])
         [self loadCoreWithoutContent:corePath];
 
     NSArray<CoreOptionCategory *> *result = [self collectCoreOptionCategories];
