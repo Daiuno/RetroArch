@@ -151,7 +151,8 @@ UINavigationControllerDelegate> {
 - (id _Nullable)getDiskInfo;
 - (BOOL)insertDisk:(NSString *_Nonnull)path;
 - (void)setPSXAnalog:(BOOL)isAnalog;
-- (void)setWiiRemote:(BOOL)willRemote;
+/// 0 Classic Pro, 1 Wiimote, 2 Wiimote sideways, 3 Wiimote+Nunchuk (Dolphin Input.cpp).
+- (void)setWiiController:(NSInteger)controllerType;
 - (void)setReloadDelay:(double)delay;
 - (void)turnOffHardcode;
 - (void)resetRetroAchievements;
@@ -160,7 +161,7 @@ UINavigationControllerDelegate> {
 - (BOOL)getSensorEnable:(int)playerIndex;
 - (void)sendTouchEventX:(CGFloat)x y:(CGFloat)y;
 - (void)releaseTouchEvent;
-- (void)sendMultiTouchEvent:(NSArray<NSDictionary *> *)points;
+- (void)sendMultiTouchEvent:(NSArray<NSDictionary *> *_Nonnull)points;
 - (NSString *_Nullable)getCoreConfigs:(NSString *_Nonnull)coreName;
 - (void)updateFBNeoCheatCode:(NSArray<NSString *> *_Nonnull)keys enable:(BOOL)enable;
 - (void)setFastforwardFrameSkip:(BOOL)frameSkip;

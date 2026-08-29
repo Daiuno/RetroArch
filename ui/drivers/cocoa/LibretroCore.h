@@ -39,6 +39,19 @@ typedef NS_ENUM(NSUInteger, LibretroButton) {
    LibretroButtonR3 = 15,
 };
 
+/// Wii controller type. Raw values match ExtraKey.wiiController / R.Strings.WiiControllers.
+/// Device IDs come from Dolphin `DolphinLibretro/Input.cpp` and are applied to ports 0–3.
+typedef NS_ENUM(NSInteger, LibretroWiiController) {
+    /// WiiMote + Classic Controller Pro. `RETRO_DEVICE_WIIMOTE_CC_PRO` = (5 << 8) | JOYPAD
+    LibretroWiiControllerClassicPro = 0,
+    /// WiiMote. `RETRO_DEVICE_WIIMOTE` = JOYPAD
+    LibretroWiiControllerWiimote = 1,
+    /// WiiMote (sideways). `RETRO_DEVICE_WIIMOTE_SW` = (2 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteSideways = 2,
+    /// WiiMote + Nunchuk. `RETRO_DEVICE_WIIMOTE_NC` = (3 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteNunchuk = 3,
+};
+
 extern NSString * const RetroAchievementsNotification;
 /// Netplay event notification. userInfo: @{@"event": @(LibretroNetplayEvent), @"info": NSString (related nickname, may be empty)}
 extern NSString * const LibretroNetplayEventNotification;
@@ -137,8 +150,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (LibretroDisk *_Nullable)getDiskInfo;
 - (BOOL)insertDisk:(NSString *_Nonnull)path;
 - (void)setPSXAnalog:(BOOL)isAnalog;
-/// YES: Wii Remote. NO: Classic Controller Pro.
-- (void)setWiiRemote:(BOOL)willRemote;
+- (void)setWiiController:(LibretroWiiController)type;
 - (void)setReloadDelay:(double)delay;
 - (void)turnOffHardcode;
 - (void)resetRetroAchievements;

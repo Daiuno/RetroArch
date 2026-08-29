@@ -2467,10 +2467,27 @@ bool set_shader_preset(const char * _Nullable preset_path)
     }
 }
 
-- (void)setWiiRemote:(BOOL)willRemote {
-    // Dolphin: WiiMote = RETRO_DEVICE_JOYPAD (1);
-    // WiiMote + Classic Controller Pro = (5 << 8) | RETRO_DEVICE_JOYPAD (1281).
-    unsigned device = willRemote ? 1 : 1281;
+- (void)setWiiController:(NSInteger)controllerType {
+    // Dolphin DolphinLibretro/Input.cpp — Wii devices on ports 0–3:
+    // RETRO_DEVICE_WIIMOTE        = RETRO_DEVICE_JOYPAD
+    // RETRO_DEVICE_WIIMOTE_SW     = (2 << 8) | RETRO_DEVICE_JOYPAD
+    // RETRO_DEVICE_WIIMOTE_NC     = (3 << 8) | RETRO_DEVICE_JOYPAD
+    // RETRO_DEVICE_WIIMOTE_CC_PRO = (5 << 8) | RETRO_DEVICE_JOYPAD
+    unsigned device = (5 << 8) | RETRO_DEVICE_JOYPAD;
+    switch (controllerType) {
+        case LibretroWiiControllerWiimote:
+            device = RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteSideways:
+            device = (2 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteNunchuk:
+            device = (3 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerClassicPro:
+        default:
+            break;
+    }
     for (unsigned i = 0; i < 4; i++) {
         retro_ctx_controller_info_t pad;
         pad.port   = i;
@@ -2536,7 +2553,7 @@ static NSString * _Nullable g_customSaveExtension = nil;
 #endif
 }
 
-- (void)sendMultiTouchEvent:(NSArray<NSDictionary *> *)points {
+- (void)sendMultiTouchEvent:(NSArray<NSDictionary *> *_Nonnull)points {
 #if !TARGET_OS_TV
     cocoa_input_data_t *apple = (cocoa_input_data_t*) input_state_get_ptr()->current_data;
     float scale = cocoa_screen_get_native_scale();

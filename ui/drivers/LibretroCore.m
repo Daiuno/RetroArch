@@ -715,8 +715,8 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     [[self getRetroArch] setPSXAnalog:isAnalog];
 }
 
-- (void)setWiiRemote:(BOOL)willRemote {
-    [[self getRetroArch] setWiiRemote:willRemote];
+- (void)setWiiController:(LibretroWiiController)type {
+    [[self getRetroArch] setWiiController:type];
 }
 
 - (void)setReloadDelay:(double)delay {
