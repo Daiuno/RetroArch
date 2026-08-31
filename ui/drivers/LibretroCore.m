@@ -1135,13 +1135,16 @@ struct retro_azahar_keyboard_config_local {
 
 // Static storage for the keyboard callback
 static void (^_Nullable s_azahar_keyboard_callback)(AzaharKeyboardConfig * _Nullable config) = nil;
+static AzaharButtonConfig s_azahar_last_button_config = AzaharButtonConfigSingle;
 
-// C callback that will be called by the Azahar core
+// C callback that will be called by the Azahar core (often off the main thread).
 static void azahar_keyboard_request_callback(
     const struct retro_azahar_keyboard_config_local* _Nullable config) {
     if (!s_azahar_keyboard_callback || !config) {
         return;
     }
+
+    s_azahar_last_button_config = (AzaharButtonConfig)config->button_config;
     
     AzaharKeyboardConfig *objcConfig = [[AzaharKeyboardConfig alloc] init];
     objcConfig.buttonConfig = (AzaharButtonConfig)config->button_config;
@@ -1171,8 +1174,13 @@ static void azahar_keyboard_request_callback(
     objcConfig.preventBackslash = config->prevent_backslash;
     objcConfig.preventProfanity = config->prevent_profanity;
     objcConfig.enableCallback = config->enable_callback;
-    
-    s_azahar_keyboard_callback(objcConfig);
+
+    void (^callback)(AzaharKeyboardConfig *) = s_azahar_keyboard_callback;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (callback) {
+            callback(objcConfig);
+        }
+    });
 }
 
 - (void)registerAzaharKeyboard:(void(^ _Nullable)(AzaharKeyboardConfig *_Nonnull config))callback {
@@ -1182,8 +1190,10 @@ static void azahar_keyboard_request_callback(
         return;
     }
     
-    // Store the callback
     s_azahar_keyboard_callback = [callback copy];
+    if (!callback) {
+        s_azahar_last_button_config = AzaharButtonConfigSingle;
+    }
     
     typedef void (*retro_azahar_set_keyboard_callback_t)(
         void (*)(const struct retro_azahar_keyboard_config_local*));
@@ -1215,14 +1225,22 @@ static void azahar_keyboard_request_callback(
     if (keyboard_input) {
         const char* text_cstr = text ? [text UTF8String] : NULL;
         int button = 0;
-        
-        // Map AzaharButtonType to button index
-        // For Single: 0=Ok
-        // For Dual: 0=Cancel, 1=Ok
-        // For Triple: 0=Cancel, 1=Forgot, 2=Ok
+        // SWKBD: Single/None Ok=0; Dual Cancel=0 Ok=1; Triple Cancel=0 Forgot=1 Ok=2.
         switch (buttonType) {
             case AzaharButtonTypeOk:
-                button = 2; // Ok is always the highest index for Triple, adjusted in core
+                switch (s_azahar_last_button_config) {
+                    case AzaharButtonConfigDual:
+                        button = 1;
+                        break;
+                    case AzaharButtonConfigTriple:
+                        button = 2;
+                        break;
+                    case AzaharButtonConfigSingle:
+                    case AzaharButtonConfigNone:
+                    default:
+                        button = 0;
+                        break;
+                }
                 break;
             case AzaharButtonTypeCancel:
                 button = 0;
@@ -1235,7 +1253,7 @@ static void azahar_keyboard_request_callback(
                 button = 0;
                 break;
         }
-        
+
         keyboard_input(text_cstr, button);
     }
 #endif

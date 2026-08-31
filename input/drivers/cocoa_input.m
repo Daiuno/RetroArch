@@ -41,6 +41,10 @@ static CMMotionManager *motionManager;
 
 #import <GameController/GameController.h>
 
+#ifndef RETRO_SENSOR_USER_VERTICAL_ACCEL
+#define RETRO_SENSOR_USER_VERTICAL_ACCEL 16
+#endif
+
 
 #if TARGET_OS_IPHONE
 #define HIDKEY(X) X
@@ -794,9 +798,15 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
 #endif
 }
 
+static float cocoa_vertical_user_accel(float gx, float gy, float gz,
+      float ux, float uy, float uz)
+{
+   return -(ux * gx + uy * gy + uz * gz);
+}
+
 static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id)
 {
-    //如果手柄支持陀螺仪 优先使用手柄的传感器
+    // Prefer a connected controller's motion sensors when available.
    if (@available(iOS 14.0, macOS 11.0, tvOS 14.0, *))
    {
       for (GCController *controller in [GCController controllers])
@@ -821,6 +831,15 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
                return controller.motion.rotationRate.y;
             case RETRO_SENSOR_GYROSCOPE_Z:
                return controller.motion.rotationRate.z;
+            case RETRO_SENSOR_USER_VERTICAL_ACCEL:
+               if (controller.motion.hasGravityAndUserAcceleration)
+                  return cocoa_vertical_user_accel(
+                        controller.motion.gravity.x, controller.motion.gravity.y,
+                        controller.motion.gravity.z,
+                        controller.motion.userAcceleration.x,
+                        controller.motion.userAcceleration.y,
+                        controller.motion.userAcceleration.z);
+               break;
          }
       }
    }
@@ -842,6 +861,14 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
             return motionManager.deviceMotion.rotationRate.y;
          case RETRO_SENSOR_GYROSCOPE_Z:
             return motionManager.deviceMotion.rotationRate.z;
+         case RETRO_SENSOR_USER_VERTICAL_ACCEL:
+            return cocoa_vertical_user_accel(
+                  motionManager.deviceMotion.gravity.x,
+                  motionManager.deviceMotion.gravity.y,
+                  motionManager.deviceMotion.gravity.z,
+                  motionManager.deviceMotion.userAcceleration.x,
+                  motionManager.deviceMotion.userAcceleration.y,
+                  motionManager.deviceMotion.userAcceleration.z);
       }
    }
 #endif
