@@ -78,6 +78,8 @@ id<ApplePlatform> apple_platform;
 static id apple_platform;
 #endif
 static CFRunLoopObserverRef iterate_observer;
+// 0 = slowmotion off; otherwise the last applied slowmotion_ratio (>= 1.0)
+static float g_custom_slowmotion_ratio = 0.0f;
 
 static void ui_companion_cocoatouch_event_command(
       void *data, enum event_command cmd) { }
@@ -555,6 +557,10 @@ enum
 - (void)deleteCurrentCoreOptFile;
 @end
 #endif
+
+@interface RetroArch_iOS (ManicPlaybackSpeed)
+- (void)restorePlaybackSpeedAfterDelay;
+@end
 
 @implementation RetroArch_iOS
 
@@ -1071,9 +1077,6 @@ static BOOL ManicPaused = false;
 
     ManicPaused = NO;
 
-    float currentFastforwardRate = g_custom_fastforward_ratio;
-    BOOL isFastforwarding = (g_custom_fastforward_ratio > 0.0f);
-    
     rarch_start_draw_observer();
 
     // UNPAUSE clears RUNLOOP_FLAG_PAUSED immediately; RESUME only closes the RA menu.
@@ -1081,12 +1084,7 @@ static BOOL ManicPaused = false;
     command_event(CMD_EVENT_RESUME, NULL);
     if (needToLoadStatePath) {
         [self loadGame:self.gamePath corePath:self.corePath completion:nil];
-        
-        if (isFastforwarding) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                [self fastForward:currentFastforwardRate];
-            });
-        }
+        [self restorePlaybackSpeedAfterDelay];
         
         if (needToLoadStateDelay > 0) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(needToLoadStateDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -1097,10 +1095,8 @@ static BOOL ManicPaused = false;
             [self loadState:needToLoadStatePath];
             needToLoadStatePath = nil;
         }
-    } else if (isFastforwarding) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            [self fastForward:currentFastforwardRate];
-        });
+    } else {
+        [self restorePlaybackSpeedAfterDelay];
     }
 }
 
@@ -1787,28 +1783,54 @@ float get_custom_fastforward_ratio(void) {
 #endif
 }
 
+- (void)setSlowmotionEnable:(BOOL)enable ratio:(float)ratio {
+    settings_t *settings = config_get_ptr();
+    runloop_state_t *runloop_st = runloop_state_get_ptr();
+    if (!settings || !runloop_st) {
+        return;
+    }
+
+    float clampedRatio = (ratio < 1.0f) ? 1.0f : ratio;
+    configuration_set_float(settings, settings->floats.slowmotion_ratio, clampedRatio);
+
+    if (enable) {
+        g_custom_slowmotion_ratio = clampedRatio;
+        // Fast-forward wins in the throttle path; turn it off so slowmotion can take effect.
+        if (g_custom_fastforward_ratio > 0.0f)
+            [self fastForward:0.0f];
+        runloop_st->flags |= RUNLOOP_FLAG_SLOWMOTION;
+    } else {
+        g_custom_slowmotion_ratio = 0.0f;
+        runloop_st->flags &= ~RUNLOOP_FLAG_SLOWMOTION;
+    }
+}
+
+- (void)restorePlaybackSpeedAfterDelay {
+    float fastforwardRate = g_custom_fastforward_ratio;
+    float slowmotionRatio = g_custom_slowmotion_ratio;
+    if (fastforwardRate > 0.0f) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self fastForward:fastforwardRate];
+        });
+    } else if (slowmotionRatio >= 1.0f) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self setSlowmotionEnable:YES ratio:slowmotionRatio];
+        });
+    }
+}
+
 - (void)reload {
     [self reloadByKeepState: NO];
 }
 
 static NSString *_Nullable needToLoadStatePath = nil;
 - (void)reloadByKeepState:(BOOL)keepState {
-    // 保存当前的快进状态
-    float currentFastforwardRate = g_custom_fastforward_ratio;
-    BOOL isFastforwarding = (g_custom_fastforward_ratio > 0.0f);
-    
     if (keepState) {
         [self saveState:^(NSString * _Nullable path) {
             if (iterate_observer) {
-                //游戏运行状态 直接加载存档
+                // Running: reload content, then restore the save.
                 [self loadGame:self.gamePath corePath:self.corePath completion:nil];
-                
-                // 恢复快进状态（如果之前处于快进模式）
-                if (isFastforwarding) {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                        [self fastForward:currentFastforwardRate];
-                    });
-                }
+                [self restorePlaybackSpeedAfterDelay];
                 
                 if (needToLoadStateDelay > 0) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(needToLoadStateDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -1818,19 +1840,13 @@ static NSString *_Nullable needToLoadStatePath = nil;
                     [self loadState:path];
                 }
             } else {
-                //暂停中 标记在恢复的时候需要加载游戏和存档
+                // Paused: load game + state on the next resume.
                 needToLoadStatePath = path;
             }
         }];
     } else {
         [self loadGame:self.gamePath corePath:self.corePath completion:nil];
-        
-        // 恢复快进状态（如果之前处于快进模式）
-        if (isFastforwarding) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                [self fastForward:currentFastforwardRate];
-            });
-        }
+        [self restorePlaybackSpeedAfterDelay];
     }
 }
 

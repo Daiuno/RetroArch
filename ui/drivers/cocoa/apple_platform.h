@@ -174,6 +174,7 @@ UINavigationControllerDelegate> {
        bufferSizeStepMB:(unsigned)bufferSizeStepMB
                    mute:(BOOL)mute;
 - (void)setRewind:(BOOL)rewinding;
+- (void)setSlowmotionEnable:(BOOL)enable ratio:(float)ratio;
 @end
 
 #else

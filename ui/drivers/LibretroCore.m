@@ -267,6 +267,10 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     [[self getRetroArch] setRewind:rewinding];
 }
 
+- (void)setSlowmotionEnable:(BOOL)enable ratio:(float)ratio {
+    [[self getRetroArch] setSlowmotionEnable:enable ratio:ratio];
+}
+
 - (void)reload {
     [[self getRetroArch] reload];
 }

@@ -108,6 +108,9 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (void)setRewindEnable:(BOOL)enable;
 /// Start (YES, hold-to-rewind) or stop (NO) rewinding. Rewind must be enabled first
 - (void)setRewind:(BOOL)rewinding;
+/// Enable or disable slowmotion
+/// @param ratio Slowdown factor (1.0 = normal, 3.0 = 1/3 speed). Values below 1.0 are clamped to 1.0
+- (void)setSlowmotionEnable:(BOOL)enable ratio:(float)ratio;
 - (void)reload;
 - (void)reloadByKeepState:(BOOL)keepState;
 - (BOOL)loadGame:(NSString *_Nonnull)gamePath corePath:(NSString *_Nonnull)corePath completion:(void(^ _Nullable)(NSDictionary *_Nullable))completion;
