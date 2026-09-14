@@ -70,6 +70,7 @@ NSString * const MAMEGameFileMissingNotification = @"MAMEGameFileMissingNotifica
 NSString * const LibretroNetplayEventNotification = @"LibretroNetplayEventNotification";
 NSString * const FirmwareNoSupportNotification = @"FirmwareNoSupportNotification";
 NSString * const AmigaBiosMissingNotification = @"AmigaBiosMissingNotification";
+NSString * const SegaArcadeBiosMissingNotification = @"SegaArcadeBiosMissingNotification";
 
 static BOOL LibretroPathLooksLikeEKA2L1(NSString *corePath);
 static void LibretroEKA2L1ShutdownManagement(void);
@@ -1014,6 +1015,8 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
                 [[NSNotificationCenter defaultCenter] postNotificationName:FirmwareNoSupportNotification object:nil];
             } else if ([logMessage containsString:@"Kickstart ROM"]) {
                 [[NSNotificationCenter defaultCenter] postNotificationName:AmigaBiosMissingNotification object:logMessage];
+            } else if ([logMessage containsString:@"Error: cannot load BIOS"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:SegaArcadeBiosMissingNotification object:[logMessage substringFromIndex:[logMessage rangeOfString:@"Error: cannot load BIOS"].location]];
             }
             break;
         default:

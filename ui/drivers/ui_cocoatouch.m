@@ -43,6 +43,7 @@
 #include "../../gfx/video_driver.h"
 #include "../../gfx/video_shader_parse.h"
 #include "../../runloop.h"
+#include "features/features_cpu.h"
 
 #ifdef HAVE_MENU
 #include "../../menu/menu_setting.h"
@@ -78,8 +79,45 @@ id<ApplePlatform> apple_platform;
 static id apple_platform;
 #endif
 static CFRunLoopObserverRef iterate_observer;
+static CFRunLoopTimerRef iterate_pace_timer;
+static retro_time_t iterate_next_allowed_us;
 // 0 = slowmotion off; otherwise the last applied slowmotion_ratio (>= 1.0)
 static float g_custom_slowmotion_ratio = 0.0f;
+
+static void rarch_pace_timer_cb(CFRunLoopTimerRef timer, void *info)
+{
+   CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+static void rarch_invalidate_pace_timer(void)
+{
+   if (!iterate_pace_timer)
+      return;
+   CFRunLoopTimerInvalidate(iterate_pace_timer);
+   CFRelease(iterate_pace_timer);
+   iterate_pace_timer = NULL;
+}
+
+/* iOS skips retro_sleep while foregrounded, so VRR must delay the next
+ * BeforeWaiting pump instead of immediately waking the runloop. */
+static void rarch_schedule_pace_wake(retro_time_t delay_usec)
+{
+   if (delay_usec < 1000)
+      delay_usec = 1000;
+
+   CFAbsoluteTime fire = CFAbsoluteTimeGetCurrent() + (delay_usec / 1000000.0);
+   if (iterate_pace_timer && CFRunLoopTimerIsValid(iterate_pace_timer))
+   {
+      CFRunLoopTimerSetNextFireDate(iterate_pace_timer, fire);
+      return;
+   }
+
+   rarch_invalidate_pace_timer();
+   iterate_pace_timer = CFRunLoopTimerCreate(kCFAllocatorDefault, fire,
+         HUGE_VAL, 0, 0, rarch_pace_timer_cb, NULL);
+   if (iterate_pace_timer)
+      CFRunLoopAddTimer(CFRunLoopGetMain(), iterate_pace_timer, kCFRunLoopCommonModes);
+}
 
 static void ui_companion_cocoatouch_event_command(
       void *data, enum event_command cmd) { }
@@ -168,23 +206,76 @@ static uintptr_t ui_companion_cocoatouch_get_app_icon_texture(const char *icon)
 static void rarch_draw_observer(CFRunLoopObserverRef observer,
     CFRunLoopActivity activity, void *info)
 {
+   settings_t *settings        = config_get_ptr();
+   runloop_state_t *runloop_st = runloop_state_get_ptr();
+   bool pace_to_content_fps    = settings
+         && settings->bools.vrr_runloop_enable
+         && runloop_st
+         && !(runloop_st->flags & RUNLOOP_FLAG_FASTMOTION);
    uint32_t runloop_flags;
-   int          ret   = runloop_iterate();
+   int ret;
 
-   if (ret == -1)
-   {
-      ui_companion_cocoatouch_event_command(
-            NULL, CMD_EVENT_MENU_SAVE_CURRENT_CONFIG);
-//      main_exit(NULL);
-//      exit(0); //禁止杀死应用
+   if (get_is_libretro_going_to_stop())
       return;
+
+   /* Other runloop sources still fire BeforeWaiting. Skip the core
+    * until the content-fps slot is due, otherwise VRR never holds. */
+   if (pace_to_content_fps && iterate_next_allowed_us)
+   {
+      retro_time_t now = cpu_features_get_time_usec();
+      if (now < iterate_next_allowed_us)
+      {
+         task_queue_check();
+         rarch_schedule_pace_wake(iterate_next_allowed_us - now);
+         return;
+      }
    }
 
-   task_queue_check();
+   {
+      retro_time_t frame_start_us = cpu_features_get_time_usec();
 
-   runloop_flags = runloop_get_flags();
-   if (!(runloop_flags & RUNLOOP_FLAG_IDLE))
-      CFRunLoopWakeUp(CFRunLoopGetMain());
+      ret = runloop_iterate();
+
+      if (ret == -1)
+      {
+         ui_companion_cocoatouch_event_command(
+               NULL, CMD_EVENT_MENU_SAVE_CURRENT_CONFIG);
+   //      main_exit(NULL);
+   //      exit(0); //禁止杀死应用
+         return;
+      }
+
+      task_queue_check();
+
+      runloop_flags = runloop_get_flags();
+      if (runloop_flags & RUNLOOP_FLAG_IDLE)
+         return;
+
+      if (pace_to_content_fps)
+      {
+         /* Remainder of this frame only. Waiting a full period *after*
+          * iterate() stacked on DC's ~16ms work and played at half speed. */
+         retro_time_t period = runloop_st->frame_limit_minimum_time;
+         retro_time_t now;
+         retro_time_t due;
+
+         /* Flycast swap-interval detect can report 30 Hz; cap to PAL 20ms. */
+         if (period < 8000 || period > 20000)
+            period = 16667;
+
+         now = cpu_features_get_time_usec();
+         due = frame_start_us + period;
+         if (due < now)
+            due = now;
+         iterate_next_allowed_us = due;
+         rarch_schedule_pace_wake(due > now ? due - now : 1000);
+         return;
+      }
+   }
+
+   iterate_next_allowed_us = 0;
+   rarch_invalidate_pace_timer();
+   CFRunLoopWakeUp(CFRunLoopGetMain());
 }
 
 void rarch_start_draw_observer(void)
@@ -201,6 +292,8 @@ void rarch_start_draw_observer(void)
 
 void rarch_stop_draw_observer(void)
 {
+    iterate_next_allowed_us = 0;
+    rarch_invalidate_pace_timer();
     if (!iterate_observer || !CFRunLoopObserverIsValid(iterate_observer))
         return;
     CFRunLoopObserverInvalidate(iterate_observer);
@@ -1043,8 +1136,9 @@ static BOOL ManicPaused = false;
     }
     
     rarch_main(argc, argv, NULL);
-    
-    rarch_start_draw_observer();
+    /* Content is loaded after this; start the iterate pump in loadGame.
+     * Starting it here left VRR (from the last jitless session's cfg)
+     * pumping a half-inited core and can deadlock the next launch. */
 }
 
 - (void)pause {
@@ -1063,9 +1157,16 @@ static BOOL ManicPaused = false;
     LibretroInitial = false;
     ManicPaused = false;
     set_libretro_is_going_to_stop(true);
+    /* Stop the pump before unload so VRR/iterate cannot re-enter Flycast
+     * while CLOSE_CONTENT waits on the same thread. */
+    rarch_stop_draw_observer();
+    {
+        settings_t *settings = config_get_ptr();
+        if (settings)
+            configuration_set_bool(settings, settings->bools.vrr_runloop_enable, false);
+    }
     command_event(CMD_EVENT_CLOSE_CONTENT, NULL);
     command_event(CMD_EVENT_UNLOAD_CORE, NULL);
-    rarch_stop_draw_observer();
     main_exit(NULL);
     self.gamePath = nil;
     self.corePath = nil;
@@ -1127,6 +1228,7 @@ static BOOL ManicPaused = false;
                                                    CORE_TYPE_PLAIN,
                                                    NULL,
                                                    NULL);
+    rarch_start_draw_observer();
     
     self.gamePath = gamePath;
     self.corePath = corePath;
@@ -1148,6 +1250,7 @@ static BOOL ManicPaused = false;
     set_custom_save_ext(g_customSaveExtension ? g_customSaveExtension.UTF8String : NULL);
     // 直接调用RetroArch的无内容核心加载函数
     task_push_load_contentless_core_from_menu(corePath.UTF8String);
+    rarch_start_draw_observer();
 }
 
 - (void)loadCoreWithoutRunning:(NSString *_Nonnull)corePath {
@@ -1327,7 +1430,10 @@ static BOOL ManicPaused = false;
     }
 
     BOOL ok = runloop_st->core_options && runloop_st->core_options->size > 0;
-    if (did_init && core_deinit)
+    /* Same Apple Flycast jitless trap as runloop_event_deinit_core: do not
+     * retro_deinit() or the next in-process launch deadlocks. */
+    if (did_init && core_deinit
+        && [corePath rangeOfString:@"flycast-jitless"].location == NSNotFound)
         core_deinit();
     dylib_close(lib);
     return ok;
@@ -2015,11 +2121,16 @@ static NSString *_Nullable needToLoadStatePath = nil;
     if (!LibretroInitial || configs.count == 0)
         return;
 
+    __block BOOL refreshFrameLimit = NO;
     [configs enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
         if (key.length == 0)
             return;
         config_set_runtime_value(key.UTF8String, value.UTF8String ?: "");
+        if ([key isEqualToString:@"vrr_runloop_enable"])
+            refreshFrameLimit = YES;
     }];
+    if (refreshFrameLimit)
+        command_event(CMD_EVENT_SET_FRAME_LIMIT, NULL);
 }
 
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {

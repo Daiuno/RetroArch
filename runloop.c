@@ -4183,6 +4183,18 @@ static void runloop_apply_fastmotion_override(runloop_state_t *runloop_st,
             fastforward_ratio_current);
 }
 
+/* Apple Flycast jitless never calls emu.term() in retro_deinit(); it only
+ * addrspace::release()s. The process-mapped dylib then keeps emuInited and
+ * skips emu.init() on the next retro_init, which deadlocks loadGame.
+ * Keep the core resident so VM + emu stay consistent across sessions. */
+static bool runloop_should_skip_retro_deinit(void)
+{
+   const char *core_path = path_get(RARCH_PATH_CORE);
+
+   return !string_is_empty(core_path)
+       && (strstr(core_path, "flycast-jitless") != NULL);
+}
+
 void runloop_event_deinit_core(void)
 {
    video_driver_state_t
@@ -4196,8 +4208,14 @@ void runloop_event_deinit_core(void)
 
    if (runloop_st->current_core.flags & RETRO_CORE_FLAG_INITED)
    {
-      RARCH_LOG("[Core]: Unloading core..\n");
-      runloop_st->current_core.retro_deinit();
+      if (runloop_should_skip_retro_deinit())
+         RARCH_LOG("[Core]: Skipping retro_deinit for Flycast jitless "
+               "(Apple core stays resident).\n");
+      else
+      {
+         RARCH_LOG("[Core]: Unloading core..\n");
+         runloop_st->current_core.retro_deinit();
+      }
    }
 
    /* retro_deinit() may call
