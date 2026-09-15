@@ -68,11 +68,15 @@
         @"f10",
         @"f11",
         @"f12",
+        @"f13",
+        @"f14",
+        @"f15",
         @"escape",
         @"backspace",
-        @"backquote",
-        @"minus",
-        @"equals",
+        @"tab",
+        @"return",
+        @"space",
+        @"delete",
         @"insert",
         @"home",
         @"end",
@@ -81,36 +85,201 @@
         @"print",
         @"scrolllock",
         @"pause",
-        @"delete",
-        @"tab",
-        @"backslash",
-        @"rightbracket",
-        @"leftbracket",
+        @"numlock",
         @"capslock",
-        @"quote",
+        @"up",
+        @"down",
+        @"left",
+        @"right",
+        @"comma",
+        @"period",
+        @"slash",
         @"semicolon",
-        @"return",
+        @"quote",
+        @"leftbracket",
+        @"rightbracket",
+        @"backslash",
+        @"minus",
+        @"equals",
+        @"backquote",
+        @"plus",
+        @"asterisk",
+        @"bar",
+        @"oem102",
         @"shift",
         @"lshift",
         @"rshift",
-        @"period",
-        @"slash",
-        @"comma",
         @"ctrl",
         @"lctrl",
         @"rctrl",
-        @"meta",
-        @"lmeta",
-        @"rmeta",
         @"alt",
         @"lalt",
         @"ralt",
-        @"up",
-        @"space",
-        @"down",
-        @"left",
-        @"right"
+        @"meta",
+        @"lmeta",
+        @"rmeta",
+        @"kp0",
+        @"kp1",
+        @"kp2",
+        @"kp3",
+        @"kp4",
+        @"kp5",
+        @"kp6",
+        @"kp7",
+        @"kp8",
+        @"kp9",
+        @"kpperiod",
+        @"kpdivide",
+        @"kpmultiply",
+        @"kpminus",
+        @"kpplus",
+        @"kpenter",
+        @"kpequals"
     ];
+}
+
++ (NSDictionary<NSString *, NSNumber *> *)codeMap {
+    static NSDictionary<NSString *, NSNumber *> *map;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        map = @{
+            @"0": @(RETROK_0),
+            @"1": @(RETROK_1),
+            @"2": @(RETROK_2),
+            @"3": @(RETROK_3),
+            @"4": @(RETROK_4),
+            @"5": @(RETROK_5),
+            @"6": @(RETROK_6),
+            @"7": @(RETROK_7),
+            @"8": @(RETROK_8),
+            @"9": @(RETROK_9),
+            @"a": @(RETROK_a),
+            @"b": @(RETROK_b),
+            @"c": @(RETROK_c),
+            @"d": @(RETROK_d),
+            @"e": @(RETROK_e),
+            @"f": @(RETROK_f),
+            @"g": @(RETROK_g),
+            @"h": @(RETROK_h),
+            @"i": @(RETROK_i),
+            @"j": @(RETROK_j),
+            @"k": @(RETROK_k),
+            @"l": @(RETROK_l),
+            @"m": @(RETROK_m),
+            @"n": @(RETROK_n),
+            @"o": @(RETROK_o),
+            @"p": @(RETROK_p),
+            @"q": @(RETROK_q),
+            @"r": @(RETROK_r),
+            @"s": @(RETROK_s),
+            @"t": @(RETROK_t),
+            @"u": @(RETROK_u),
+            @"v": @(RETROK_v),
+            @"w": @(RETROK_w),
+            @"x": @(RETROK_x),
+            @"y": @(RETROK_y),
+            @"z": @(RETROK_z),
+            @"f1": @(RETROK_F1),
+            @"f2": @(RETROK_F2),
+            @"f3": @(RETROK_F3),
+            @"f4": @(RETROK_F4),
+            @"f5": @(RETROK_F5),
+            @"f6": @(RETROK_F6),
+            @"f7": @(RETROK_F7),
+            @"f8": @(RETROK_F8),
+            @"f9": @(RETROK_F9),
+            @"f10": @(RETROK_F10),
+            @"f11": @(RETROK_F11),
+            @"f12": @(RETROK_F12),
+            @"f13": @(RETROK_F13),
+            @"f14": @(RETROK_F14),
+            @"f15": @(RETROK_F15),
+            @"escape": @(RETROK_ESCAPE),
+            @"backspace": @(RETROK_BACKSPACE),
+            @"tab": @(RETROK_TAB),
+            @"return": @(RETROK_RETURN),
+            @"space": @(RETROK_SPACE),
+            @"delete": @(RETROK_DELETE),
+            @"insert": @(RETROK_INSERT),
+            @"home": @(RETROK_HOME),
+            @"end": @(RETROK_END),
+            @"pageup": @(RETROK_PAGEUP),
+            @"pagedown": @(RETROK_PAGEDOWN),
+            @"print": @(RETROK_PRINT),
+            @"scrolllock": @(RETROK_SCROLLOCK),
+            @"pause": @(RETROK_PAUSE),
+            @"numlock": @(RETROK_NUMLOCK),
+            @"capslock": @(RETROK_CAPSLOCK),
+            @"up": @(RETROK_UP),
+            @"down": @(RETROK_DOWN),
+            @"left": @(RETROK_LEFT),
+            @"right": @(RETROK_RIGHT),
+            @"comma": @(RETROK_COMMA),
+            @"period": @(RETROK_PERIOD),
+            @"slash": @(RETROK_SLASH),
+            @"semicolon": @(RETROK_SEMICOLON),
+            @"quote": @(RETROK_QUOTE),
+            @"leftbracket": @(RETROK_LEFTBRACKET),
+            @"rightbracket": @(RETROK_RIGHTBRACKET),
+            @"backslash": @(RETROK_BACKSLASH),
+            @"minus": @(RETROK_MINUS),
+            @"equals": @(RETROK_EQUALS),
+            @"backquote": @(RETROK_BACKQUOTE),
+            @"plus": @(RETROK_PLUS),
+            @"asterisk": @(RETROK_ASTERISK),
+            @"bar": @(RETROK_BAR),
+            @"oem102": @(RETROK_OEM_102),
+            @"shift": @(RETROK_LSHIFT),
+            @"lshift": @(RETROK_LSHIFT),
+            @"rshift": @(RETROK_RSHIFT),
+            @"ctrl": @(RETROK_LCTRL),
+            @"lctrl": @(RETROK_LCTRL),
+            @"rctrl": @(RETROK_RCTRL),
+            @"alt": @(RETROK_LALT),
+            @"lalt": @(RETROK_LALT),
+            @"ralt": @(RETROK_RALT),
+            @"meta": @(RETROK_LMETA),
+            @"lmeta": @(RETROK_LMETA),
+            @"rmeta": @(RETROK_RMETA),
+            @"kp0": @(RETROK_KP0),
+            @"kp1": @(RETROK_KP1),
+            @"kp2": @(RETROK_KP2),
+            @"kp3": @(RETROK_KP3),
+            @"kp4": @(RETROK_KP4),
+            @"kp5": @(RETROK_KP5),
+            @"kp6": @(RETROK_KP6),
+            @"kp7": @(RETROK_KP7),
+            @"kp8": @(RETROK_KP8),
+            @"kp9": @(RETROK_KP9),
+            @"kpperiod": @(RETROK_KP_PERIOD),
+            @"kpdivide": @(RETROK_KP_DIVIDE),
+            @"kpmultiply": @(RETROK_KP_MULTIPLY),
+            @"kpminus": @(RETROK_KP_MINUS),
+            @"kpplus": @(RETROK_KP_PLUS),
+            @"kpenter": @(RETROK_KP_ENTER),
+            @"kpequals": @(RETROK_KP_EQUALS),
+            // Legacy KeyboardGameController names and character aliases.
+            @"capsLock": @(RETROK_CAPSLOCK),
+            @"control": @(RETROK_LCTRL),
+            @"option": @(RETROK_LALT),
+            @"command": @(RETROK_LMETA),
+            @",": @(RETROK_COMMA),
+            @".": @(RETROK_PERIOD),
+            @"/": @(RETROK_SLASH),
+            @";": @(RETROK_SEMICOLON),
+            @"'": @(RETROK_QUOTE),
+            @"[": @(RETROK_LEFTBRACKET),
+            @"]": @(RETROK_RIGHTBRACKET),
+            @"\\": @(RETROK_BACKSLASH),
+            @"-": @(RETROK_MINUS),
+            @"=": @(RETROK_EQUALS),
+            @"`": @(RETROK_BACKQUOTE),
+            @"+": @(RETROK_PLUS),
+            @"*": @(RETROK_ASTERISK),
+            @"|": @(RETROK_BAR)
+        };
+    });
+    return map;
 }
 
 + (instancetype)createCodeWithLabel:(NSString *)label code:(unsigned)code {
@@ -121,97 +290,9 @@
 }
 
 + (LibretroKeyboardCode *_Nullable)createCodeWithLabel:(NSString *_Nonnull)label {
-    if ([label isEqualToString:@"1"]) { return [self createCodeWithLabel:label code:RETROK_1]; }
-    else if ([label isEqualToString:@"2"]) { return [self createCodeWithLabel:label code:RETROK_2]; }
-    else if ([label isEqualToString:@"3"]) { return [self createCodeWithLabel:label code:RETROK_3]; }
-    else if ([label isEqualToString:@"4"]) { return [self createCodeWithLabel:label code:RETROK_4]; }
-    else if ([label isEqualToString:@"5"]) { return [self createCodeWithLabel:label code:RETROK_5]; }
-    else if ([label isEqualToString:@"6"]) { return [self createCodeWithLabel:label code:RETROK_6]; }
-    else if ([label isEqualToString:@"7"]) { return [self createCodeWithLabel:label code:RETROK_7]; }
-    else if ([label isEqualToString:@"8"]) { return [self createCodeWithLabel:label code:RETROK_8]; }
-    else if ([label isEqualToString:@"9"]) { return [self createCodeWithLabel:label code:RETROK_9]; }
-    else if ([label isEqualToString:@"0"]) { return [self createCodeWithLabel:label code:RETROK_0]; }
-    else if ([label isEqualToString:@"a"]) { return [self createCodeWithLabel:label code:RETROK_a]; }
-    else if ([label isEqualToString:@"b"]) { return [self createCodeWithLabel:label code:RETROK_b]; }
-    else if ([label isEqualToString:@"c"]) { return [self createCodeWithLabel:label code:RETROK_c]; }
-    else if ([label isEqualToString:@"d"]) { return [self createCodeWithLabel:label code:RETROK_d]; }
-    else if ([label isEqualToString:@"e"]) { return [self createCodeWithLabel:label code:RETROK_e]; }
-    else if ([label isEqualToString:@"f"]) { return [self createCodeWithLabel:label code:RETROK_f]; }
-    else if ([label isEqualToString:@"g"]) { return [self createCodeWithLabel:label code:RETROK_g]; }
-    else if ([label isEqualToString:@"h"]) { return [self createCodeWithLabel:label code:RETROK_h]; }
-    else if ([label isEqualToString:@"i"]) { return [self createCodeWithLabel:label code:RETROK_i]; }
-    else if ([label isEqualToString:@"j"]) { return [self createCodeWithLabel:label code:RETROK_j]; }
-    else if ([label isEqualToString:@"k"]) { return [self createCodeWithLabel:label code:RETROK_k]; }
-    else if ([label isEqualToString:@"l"]) { return [self createCodeWithLabel:label code:RETROK_l]; }
-    else if ([label isEqualToString:@"m"]) { return [self createCodeWithLabel:label code:RETROK_m]; }
-    else if ([label isEqualToString:@"n"]) { return [self createCodeWithLabel:label code:RETROK_n]; }
-    else if ([label isEqualToString:@"o"]) { return [self createCodeWithLabel:label code:RETROK_o]; }
-    else if ([label isEqualToString:@"p"]) { return [self createCodeWithLabel:label code:RETROK_p]; }
-    else if ([label isEqualToString:@"q"]) { return [self createCodeWithLabel:label code:RETROK_q]; }
-    else if ([label isEqualToString:@"r"]) { return [self createCodeWithLabel:label code:RETROK_r]; }
-    else if ([label isEqualToString:@"s"]) { return [self createCodeWithLabel:label code:RETROK_s]; }
-    else if ([label isEqualToString:@"t"]) { return [self createCodeWithLabel:label code:RETROK_t]; }
-    else if ([label isEqualToString:@"u"]) { return [self createCodeWithLabel:label code:RETROK_u]; }
-    else if ([label isEqualToString:@"v"]) { return [self createCodeWithLabel:label code:RETROK_v]; }
-    else if ([label isEqualToString:@"w"]) { return [self createCodeWithLabel:label code:RETROK_w]; }
-    else if ([label isEqualToString:@"x"]) { return [self createCodeWithLabel:label code:RETROK_x]; }
-    else if ([label isEqualToString:@"y"]) { return [self createCodeWithLabel:label code:RETROK_y]; }
-    else if ([label isEqualToString:@"z"]) { return [self createCodeWithLabel:label code:RETROK_z]; }
-    else if ([label isEqualToString:@"f1"]) { return [self createCodeWithLabel:label code:RETROK_F1]; }
-    else if ([label isEqualToString:@"f2"]) { return [self createCodeWithLabel:label code:RETROK_F2]; }
-    else if ([label isEqualToString:@"f3"]) { return [self createCodeWithLabel:label code:RETROK_F3]; }
-    else if ([label isEqualToString:@"f4"]) { return [self createCodeWithLabel:label code:RETROK_F4]; }
-    else if ([label isEqualToString:@"f5"]) { return [self createCodeWithLabel:label code:RETROK_F5]; }
-    else if ([label isEqualToString:@"f6"]) { return [self createCodeWithLabel:label code:RETROK_F6]; }
-    else if ([label isEqualToString:@"f7"]) { return [self createCodeWithLabel:label code:RETROK_F7]; }
-    else if ([label isEqualToString:@"f8"]) { return [self createCodeWithLabel:label code:RETROK_F8]; }
-    else if ([label isEqualToString:@"f9"]) { return [self createCodeWithLabel:label code:RETROK_F9]; }
-    else if ([label isEqualToString:@"f10"]) { return [self createCodeWithLabel:label code:RETROK_F10]; }
-    else if ([label isEqualToString:@"f11"]) { return [self createCodeWithLabel:label code:RETROK_F11]; }
-    else if ([label isEqualToString:@"f12"]) { return [self createCodeWithLabel:label code:RETROK_F12]; }
-    else if ([label isEqualToString:@"escape"]) { return [self createCodeWithLabel:label code:RETROK_ESCAPE]; }
-    else if ([label isEqualToString:@"backspace"]) { return [self createCodeWithLabel:label code:RETROK_BACKSPACE]; }
-    else if ([label isEqualToString:@"backquote"]) { return [self createCodeWithLabel:label code:RETROK_BACKQUOTE]; }
-    else if ([label isEqualToString:@"minus"]) { return [self createCodeWithLabel:label code:RETROK_MINUS]; }
-    else if ([label isEqualToString:@"equals"]) { return [self createCodeWithLabel:label code:RETROK_EQUALS]; }
-    else if ([label isEqualToString:@"insert"]) { return [self createCodeWithLabel:label code:RETROK_INSERT]; }
-    else if ([label isEqualToString:@"home"]) { return [self createCodeWithLabel:label code:RETROK_HOME]; }
-    else if ([label isEqualToString:@"end"]) { return [self createCodeWithLabel:label code:RETROK_END]; }
-    else if ([label isEqualToString:@"pageup"]) { return [self createCodeWithLabel:label code:RETROK_PAGEUP]; }
-    else if ([label isEqualToString:@"pagedown"]) { return [self createCodeWithLabel:label code:RETROK_PAGEDOWN]; }
-    else if ([label isEqualToString:@"print"]) { return [self createCodeWithLabel:label code:RETROK_PRINT]; }
-    else if ([label isEqualToString:@"scrolllock"]) { return [self createCodeWithLabel:label code:RETROK_SCROLLOCK]; }
-    else if ([label isEqualToString:@"pause"]) { return [self createCodeWithLabel:label code:RETROK_PAUSE]; }
-    else if ([label isEqualToString:@"delete"]) { return [self createCodeWithLabel:label code:RETROK_DELETE]; }
-    else if ([label isEqualToString:@"tab"]) { return [self createCodeWithLabel:label code:RETROK_TAB]; }
-    else if ([label isEqualToString:@"backslash"]) { return [self createCodeWithLabel:label code:RETROK_BACKSLASH]; }
-    else if ([label isEqualToString:@"rightbracket"]) { return [self createCodeWithLabel:label code:RETROK_RIGHTBRACKET]; }
-    else if ([label isEqualToString:@"leftbracket"]) { return [self createCodeWithLabel:label code:RETROK_LEFTBRACKET]; }
-    else if ([label isEqualToString:@"capslock"]) { return [self createCodeWithLabel:label code:RETROK_CAPSLOCK]; }
-    else if ([label isEqualToString:@"quote"]) { return [self createCodeWithLabel:label code:RETROK_QUOTE]; }
-    else if ([label isEqualToString:@"semicolon"]) { return [self createCodeWithLabel:label code:RETROK_SEMICOLON]; }
-    else if ([label isEqualToString:@"return"]) { return [self createCodeWithLabel:label code:RETROK_RETURN]; }
-    else if ([label isEqualToString:@"shift"]) { return [self createCodeWithLabel:label code:RETROK_LSHIFT]; }
-    else if ([label isEqualToString:@"lshift"]) { return [self createCodeWithLabel:label code:RETROK_LSHIFT]; }
-    else if ([label isEqualToString:@"rshift"]) { return [self createCodeWithLabel:label code:RETROK_RSHIFT]; }
-    else if ([label isEqualToString:@"period"]) { return [self createCodeWithLabel:label code:RETROK_PERIOD]; }
-    else if ([label isEqualToString:@"slash"]) { return [self createCodeWithLabel:label code:RETROK_SLASH]; }
-    else if ([label isEqualToString:@"comma"]) { return [self createCodeWithLabel:label code:RETROK_COMMA]; }
-    else if ([label isEqualToString:@"up"]) { return [self createCodeWithLabel:label code:RETROK_UP]; }
-    else if ([label isEqualToString:@"ctrl"]) { return [self createCodeWithLabel:label code:RETROK_LCTRL]; }
-    else if ([label isEqualToString:@"lctrl"]) { return [self createCodeWithLabel:label code:RETROK_LCTRL]; }
-    else if ([label isEqualToString:@"rctrl"]) { return [self createCodeWithLabel:label code:RETROK_RCTRL]; }
-    else if ([label isEqualToString:@"meta"]) { return [self createCodeWithLabel:label code:RETROK_LMETA]; }
-    else if ([label isEqualToString:@"lmeta"]) { return [self createCodeWithLabel:label code:RETROK_LMETA]; }
-    else if ([label isEqualToString:@"rmeta"]) { return [self createCodeWithLabel:label code:RETROK_RMETA]; }
-    else if ([label isEqualToString:@"alt"]) { return [self createCodeWithLabel:label code:RETROK_LALT]; }
-    else if ([label isEqualToString:@"lalt"]) { return [self createCodeWithLabel:label code:RETROK_LALT]; }
-    else if ([label isEqualToString:@"ralt"]) { return [self createCodeWithLabel:label code:RETROK_RALT]; }
-    else if ([label isEqualToString:@"space"]) { return [self createCodeWithLabel:label code:RETROK_SPACE]; }
-    else if ([label isEqualToString:@"down"]) { return [self createCodeWithLabel:label code:RETROK_DOWN]; }
-    else if ([label isEqualToString:@"left"]) { return [self createCodeWithLabel:label code:RETROK_LEFT]; }
-    else if ([label isEqualToString:@"right"]) { return [self createCodeWithLabel:label code:RETROK_RIGHT]; }
-    return nil;
+    NSNumber *code = [self codeMap][label];
+    if (!code) { return nil; }
+    return [self createCodeWithLabel:label code:code.unsignedIntValue];
 }
 
 @end
