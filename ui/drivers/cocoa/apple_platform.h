@@ -151,7 +151,7 @@ UINavigationControllerDelegate> {
 - (id _Nullable)getDiskInfo;
 - (BOOL)insertDisk:(NSString *_Nonnull)path;
 - (void)setPSXAnalog:(BOOL)isAnalog;
-/// 0 Classic Pro, 1 Wiimote, 2 Wiimote sideways, 3 Wiimote+Nunchuk (Dolphin Input.cpp).
+/// Matches LibretroWiiController. Real Wiimote is not exposed.
 - (void)setWiiController:(NSInteger)controllerType;
 - (void)setReloadDelay:(double)delay;
 - (void)turnOffHardcode;

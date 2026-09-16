@@ -40,6 +40,7 @@ typedef NS_ENUM(NSUInteger, LibretroButton) {
 };
 
 /// Wii controller type. Raw values match ExtraKey.wiiController / R.Strings.WiiControllers.
+/// 0–3 are stable (saved per-game). Later cases were appended.
 /// Device IDs come from Dolphin `DolphinLibretro/Input.cpp` and are applied to ports 0–3.
 typedef NS_ENUM(NSInteger, LibretroWiiController) {
     /// WiiMote + Classic Controller Pro. `RETRO_DEVICE_WIIMOTE_CC_PRO` = (5 << 8) | JOYPAD
@@ -50,6 +51,20 @@ typedef NS_ENUM(NSInteger, LibretroWiiController) {
     LibretroWiiControllerWiimoteSideways = 2,
     /// WiiMote + Nunchuk. `RETRO_DEVICE_WIIMOTE_NC` = (3 << 8) | JOYPAD
     LibretroWiiControllerWiimoteNunchuk = 3,
+    /// WiiMote + Classic Controller. `RETRO_DEVICE_WIIMOTE_CC` = (4 << 8) | JOYPAD
+    LibretroWiiControllerClassic = 4,
+    /// WiiMote + MotionPlus. `RETRO_DEVICE_WIIMOTE_MP` = (7 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteMotionPlus = 5,
+    /// WiiMote + MotionPlus (sideways). `RETRO_DEVICE_WIIMOTE_MP_SW` = (8 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteMotionPlusSideways = 6,
+    /// WiiMote + MotionPlus + Nunchuk. `RETRO_DEVICE_WIIMOTE_MP_NC` = (9 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteMotionPlusNunchuk = 7,
+    /// WiiMote + MotionPlus + Classic Controller. `RETRO_DEVICE_WIIMOTE_MP_CC` = (10 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteMotionPlusClassic = 8,
+    /// WiiMote + MotionPlus + Classic Controller Pro. `RETRO_DEVICE_WIIMOTE_MP_CC_PRO` = (11 << 8) | JOYPAD
+    LibretroWiiControllerWiimoteMotionPlusClassicPro = 9,
+    /// GameCube controller on a Wii title. `RETRO_DEVICE_GC_ON_WII` = (6 << 8) | JOYPAD
+    LibretroWiiControllerGameCube = 10,
 };
 
 extern NSString * const RetroAchievementsNotification;

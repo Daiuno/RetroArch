@@ -411,7 +411,14 @@ static void cocoa_input_poll(void *data)
    apple->mouse_rel_y = apple->window_pos_y - apple->mouse_y_last;
    apple->mouse_y_last = apple->window_pos_y;
 
-   for (i = 0; i < apple->touch_count || i == 0; i++)
+   /* No finger and no hover: leave analog at 0 (libretro pointer center).
+    * Translating the unset 0,0 pixel would slam the cursor to the top-left. */
+   uint32_t pointer_slots = apple->touch_count;
+   if (pointer_slots == 0 &&
+       (apple->touches[0].screen_x != 0 || apple->touches[0].screen_y != 0))
+      pointer_slots = 1;
+
+   for (i = 0; i < pointer_slots; i++)
    {
       struct video_viewport vp;
 
@@ -435,6 +442,7 @@ static void cocoa_input_poll(void *data)
             &apple->touches[i].full_x,
             &apple->touches[i].full_y);
    }
+
 }
 
 static int16_t cocoa_lightgun_aiming_state(

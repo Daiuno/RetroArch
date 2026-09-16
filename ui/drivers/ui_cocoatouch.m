@@ -2596,10 +2596,17 @@ bool set_shader_preset(const char * _Nullable preset_path)
 
 - (void)setWiiController:(NSInteger)controllerType {
     // Dolphin DolphinLibretro/Input.cpp — Wii devices on ports 0–3:
-    // RETRO_DEVICE_WIIMOTE        = RETRO_DEVICE_JOYPAD
-    // RETRO_DEVICE_WIIMOTE_SW     = (2 << 8) | RETRO_DEVICE_JOYPAD
-    // RETRO_DEVICE_WIIMOTE_NC     = (3 << 8) | RETRO_DEVICE_JOYPAD
-    // RETRO_DEVICE_WIIMOTE_CC_PRO = (5 << 8) | RETRO_DEVICE_JOYPAD
+    // RETRO_DEVICE_WIIMOTE           = RETRO_DEVICE_JOYPAD
+    // RETRO_DEVICE_WIIMOTE_SW        = (2 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_NC        = (3 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_CC        = (4 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_CC_PRO    = (5 << 8) | JOYPAD
+    // RETRO_DEVICE_GC_ON_WII         = (6 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_MP        = (7 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_MP_SW     = (8 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_MP_NC     = (9 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_MP_CC     = (10 << 8) | JOYPAD
+    // RETRO_DEVICE_WIIMOTE_MP_CC_PRO = (11 << 8) | JOYPAD
     unsigned device = (5 << 8) | RETRO_DEVICE_JOYPAD;
     switch (controllerType) {
         case LibretroWiiControllerWiimote:
@@ -2610,6 +2617,27 @@ bool set_shader_preset(const char * _Nullable preset_path)
             break;
         case LibretroWiiControllerWiimoteNunchuk:
             device = (3 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerClassic:
+            device = (4 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteMotionPlus:
+            device = (7 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteMotionPlusSideways:
+            device = (8 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteMotionPlusNunchuk:
+            device = (9 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteMotionPlusClassic:
+            device = (10 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerWiimoteMotionPlusClassicPro:
+            device = (11 << 8) | RETRO_DEVICE_JOYPAD;
+            break;
+        case LibretroWiiControllerGameCube:
+            device = (6 << 8) | RETRO_DEVICE_JOYPAD;
             break;
         case LibretroWiiControllerClassicPro:
         default:
