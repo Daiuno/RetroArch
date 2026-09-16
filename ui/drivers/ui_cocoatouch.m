@@ -23,6 +23,7 @@
 
 #include <boolean.h>
 
+#include <dynamic/dylib.h>
 #include <file/file_path.h>
 #include <queues/task_queue.h>
 #include <string/stdstring.h>
@@ -36,6 +37,7 @@
 #include "../../frontend/frontend.h"
 #include "../../input/drivers/cocoa_input.h"
 #include "../../input/drivers_keyboard/keyboard_event_apple.h"
+#include "../../paths.h"
 #include "../../retroarch.h"
 #include "../../tasks/task_content.h"
 #include "../../verbosity.h"
@@ -79,44 +81,207 @@ id<ApplePlatform> apple_platform;
 static id apple_platform;
 #endif
 static CFRunLoopObserverRef iterate_observer;
-static CFRunLoopTimerRef iterate_pace_timer;
-static retro_time_t iterate_next_allowed_us;
 // 0 = slowmotion off; otherwise the last applied slowmotion_ratio (>= 1.0)
 static float g_custom_slowmotion_ratio = 0.0f;
+
+/* Speed limiter for the closed-source jitless Flycast build.
+ *
+ * That core ends a retro_run when the guest presents, or after a 50 ms guest
+ * watchdog if the starved guest CPU never drew, so one call advances 1..3 guest
+ * frames. Pacing on a fixed frame period therefore cannot hold 1.0x, and audio
+ * is no help either: its AICA runs on a wall clock, handing us exactly
+ * sample_rate frames per real second whatever the guest is doing, so a
+ * blocking audio driver can never back-pressure.
+ *
+ * What does work is the core's own speed meter (emulated SH4 cycles per real
+ * second / 200 MHz, 100% == realtime): delay the pump until that reads 1.0x.
+ * The quantum follows the scene and the SH4 clock rather than our pacing, so
+ * the loop settles instead of oscillating. */
+#define PACE_WINDOW_US    500000
+#define PACE_QUANTUM_MAX  4
+/* Hold the period while the measured speed is this close to realtime. */
+#define PACE_DEADBAND_PCT 3.0
+
+enum { PACE_UNRESOLVED = 0, PACE_DISABLED, PACE_ACTIVE };
+
+static int pace_state;
+static float (*pace_core_speed)(void);
+
+static CFRunLoopTimerRef pace_timer;
+static retro_time_t pace_next_allowed_us;
+static retro_time_t pace_period_us;      /* 0 until the first measurement */
+
+static unsigned pace_window_runs;
+static retro_time_t pace_window_start_us;
 
 static void rarch_pace_timer_cb(CFRunLoopTimerRef timer, void *info)
 {
    CFRunLoopWakeUp(CFRunLoopGetMain());
 }
 
-static void rarch_invalidate_pace_timer(void)
+static void rarch_pace_invalidate_timer(void)
 {
-   if (!iterate_pace_timer)
+   if (!pace_timer)
       return;
-   CFRunLoopTimerInvalidate(iterate_pace_timer);
-   CFRelease(iterate_pace_timer);
-   iterate_pace_timer = NULL;
+   CFRunLoopTimerInvalidate(pace_timer);
+   CFRelease(pace_timer);
+   pace_timer = NULL;
 }
 
-/* iOS skips retro_sleep while foregrounded, so VRR must delay the next
- * BeforeWaiting pump instead of immediately waking the runloop. */
-static void rarch_schedule_pace_wake(retro_time_t delay_usec)
+/* iOS skips retro_sleep while foregrounded, so delay the next BeforeWaiting
+ * pump with a timer instead of blocking the main thread. */
+static void rarch_pace_schedule_wake(retro_time_t delay_usec)
 {
+   CFAbsoluteTime fire;
+
    if (delay_usec < 1000)
       delay_usec = 1000;
 
-   CFAbsoluteTime fire = CFAbsoluteTimeGetCurrent() + (delay_usec / 1000000.0);
-   if (iterate_pace_timer && CFRunLoopTimerIsValid(iterate_pace_timer))
+   fire = CFAbsoluteTimeGetCurrent() + (delay_usec / 1000000.0);
+   if (pace_timer && CFRunLoopTimerIsValid(pace_timer))
    {
-      CFRunLoopTimerSetNextFireDate(iterate_pace_timer, fire);
+      CFRunLoopTimerSetNextFireDate(pace_timer, fire);
       return;
    }
 
-   rarch_invalidate_pace_timer();
-   iterate_pace_timer = CFRunLoopTimerCreate(kCFAllocatorDefault, fire,
+   rarch_pace_invalidate_timer();
+   pace_timer = CFRunLoopTimerCreate(kCFAllocatorDefault, fire,
          HUGE_VAL, 0, 0, rarch_pace_timer_cb, NULL);
-   if (iterate_pace_timer)
-      CFRunLoopAddTimer(CFRunLoopGetMain(), iterate_pace_timer, kCFRunLoopCommonModes);
+   if (pace_timer)
+      CFRunLoopAddTimer(CFRunLoopGetMain(), pace_timer, kCFRunLoopCommonModes);
+}
+
+static void rarch_pace_reset(void)
+{
+   pace_state           = PACE_UNRESOLVED;
+   pace_core_speed      = NULL;
+   pace_next_allowed_us = 0;
+   pace_period_us       = 0;
+   pace_window_runs     = 0;
+   pace_window_start_us = 0;
+   rarch_pace_invalidate_timer();
+}
+
+/* Resolves the core exports on first use. Returns false for every core but
+ * jitless Flycast, which keeps the pump untouched for everything else. */
+static bool rarch_pace_active(void)
+{
+   const char *core_path;
+   dylib_t lib;
+
+   if (pace_state == PACE_ACTIVE)
+      return true;
+   if (pace_state == PACE_DISABLED)
+      return false;
+
+   core_path = path_get(RARCH_PATH_CORE);
+
+   /* Stay unresolved while the path is still empty: latching here would leave
+    * the limiter permanently off if the pump ever ticks before content load
+    * sets the core path. */
+   if (string_is_empty(core_path))
+      return false;
+
+   if (!strstr(core_path, "flycast-jitless"))
+   {
+      pace_state = PACE_DISABLED;
+      return false;
+   }
+
+   /* Cores are dlopen'd RTLD_LOCAL, so RTLD_DEFAULT cannot see their exports.
+    * Take a second reference to the already-resident image and resolve through
+    * it; dylib_load also handles the .framework path rewrite. */
+   lib = dylib_load(core_path);
+   if (lib)
+   {
+      pace_core_speed = (float (*)(void))
+            dylib_proc(lib, "flycast_spg_cpu_speed_percent");
+      dylib_close(lib);
+   }
+
+   /* Without the speed meter there is nothing to measure against, and the core
+    * would silently run at 1.5-3x again. Loud on purpose: it means a core
+    * update dropped or renamed the export. */
+   if (!pace_core_speed)
+   {
+      pace_state = PACE_DISABLED;
+      NSLog(@"[Pace]: flycast-jitless speed meter missing, speed limiter disabled");
+      return false;
+   }
+
+   pace_state = PACE_ACTIVE;
+   return true;
+}
+
+/* Call once per runloop_iterate(); re-derives the period every window. */
+static void rarch_pace_measure(void)
+{
+   video_driver_state_t *video_st = video_state_get_ptr();
+   retro_time_t now               = cpu_features_get_time_usec();
+   double fps                     = video_st ? video_st->av_info.timing.fps : 0.0;
+   double elapsed;
+   double speed;
+   double frame_us;
+
+   pace_window_runs++;
+
+   if (!pace_window_start_us)
+   {
+      pace_window_start_us = now;
+      return;
+   }
+
+   if (now - pace_window_start_us < PACE_WINDOW_US)
+      return;
+
+   /* A window stretched by fast-forward or a trip to the background says
+    * nothing about the quantum. Start over rather than act on it. */
+   if (now - pace_window_start_us > 2 * PACE_WINDOW_US)
+   {
+      pace_window_runs     = 0;
+      pace_window_start_us = now;
+      return;
+   }
+
+   elapsed  = (double)(now - pace_window_start_us) / 1000000.0;
+   speed    = (double)pace_core_speed();
+   frame_us = fps > 1.0 ? 1000000.0 / fps : 0.0;
+
+   /* Only move while off target: a stale meter reading (0) or a speed already
+    * at realtime must not disturb a period that is working. */
+   if (frame_us > 0.0 && speed > 10.0
+         && (speed > 100.0 + PACE_DEADBAND_PCT
+          || speed < 100.0 - PACE_DEADBAND_PCT))
+   {
+      double next;
+
+      if (pace_period_us)
+         /* While the period is what binds the pump, speed is inversely
+          * proportional to it, so scaling by the error converges without
+          * having to guess an integer quantum. Rounding the quantum instead
+          * would misread a noisy meter (2.8 -> 3 but 2.2 -> 2) and leave the
+          * period hunting between two values. */
+         next = (double)pace_period_us * speed / 100.0;
+      else
+      {
+         /* Bootstrap: guest frames advanced over the window divided by the
+          * runs it took is the quantum this scene needs budgeting for. */
+         double quantum = (speed / 100.0 * fps * elapsed)
+               / (double)pace_window_runs;
+
+         next = (quantum < 1.0 ? 1.0 : quantum) * frame_us;
+      }
+
+      if (next < frame_us)
+         next = frame_us;
+      if (next > PACE_QUANTUM_MAX * frame_us)
+         next = PACE_QUANTUM_MAX * frame_us;
+
+      pace_period_us = (retro_time_t)next;
+   }
+
+   pace_window_runs     = 0;
+   pace_window_start_us = now;
 }
 
 static void ui_companion_cocoatouch_event_command(
@@ -206,80 +371,89 @@ static uintptr_t ui_companion_cocoatouch_get_app_icon_texture(const char *icon)
 static void rarch_draw_observer(CFRunLoopObserverRef observer,
     CFRunLoopActivity activity, void *info)
 {
-   settings_t *settings        = config_get_ptr();
-   runloop_state_t *runloop_st = runloop_state_get_ptr();
-   bool pace_to_content_fps    = settings
-         && settings->bools.vrr_runloop_enable
-         && runloop_st
-         && !(runloop_st->flags & RUNLOOP_FLAG_FASTMOTION);
    uint32_t runloop_flags;
+   retro_time_t run_start_us = 0;
+   bool limit_speed;
    int ret;
 
    if (get_is_libretro_going_to_stop())
       return;
 
-   /* Other runloop sources still fire BeforeWaiting. Skip the core
-    * until the content-fps slot is due, otherwise VRR never holds. */
-   if (pace_to_content_fps && iterate_next_allowed_us)
+   /* rarch_pace_active() is false (and cached) for every core but jitless
+    * Flycast, so this short-circuits before touching anything else. Leave the
+    * pump alone while the user is fast-forwarding or paused as well. */
+   limit_speed = rarch_pace_active()
+         && !(runloop_get_flags() & (RUNLOOP_FLAG_FASTMOTION
+                                   | RUNLOOP_FLAG_SLOWMOTION
+                                   | RUNLOOP_FLAG_PAUSED));
+
+   if (limit_speed)
    {
-      retro_time_t now = cpu_features_get_time_usec();
-      if (now < iterate_next_allowed_us)
+      /* Other runloop sources also fire BeforeWaiting, so hold the core back
+       * until its slot is due instead of running on every wake. */
+      if (pace_next_allowed_us)
       {
-         task_queue_check();
-         rarch_schedule_pace_wake(iterate_next_allowed_us - now);
-         return;
+         retro_time_t now = cpu_features_get_time_usec();
+
+         if (now < pace_next_allowed_us)
+         {
+            task_queue_check();
+            rarch_pace_schedule_wake(pace_next_allowed_us - now);
+            return;
+         }
       }
+      run_start_us = cpu_features_get_time_usec();
+   }
+   else if (pace_next_allowed_us || pace_timer)
+   {
+      /* Fast-forward just took over; drop the pending slot and its timer. */
+      pace_next_allowed_us = 0;
+      rarch_pace_invalidate_timer();
    }
 
+   ret = runloop_iterate();
+
+   if (ret == -1)
    {
-      retro_time_t frame_start_us = cpu_features_get_time_usec();
+      ui_companion_cocoatouch_event_command(
+            NULL, CMD_EVENT_MENU_SAVE_CURRENT_CONFIG);
+//      main_exit(NULL);
+//      exit(0); //禁止杀死应用
+      return;
+   }
 
-      ret = runloop_iterate();
+   task_queue_check();
 
-      if (ret == -1)
+   runloop_flags = runloop_get_flags();
+   if (runloop_flags & RUNLOOP_FLAG_IDLE)
+      return;
+
+   if (limit_speed)
+   {
+      rarch_pace_measure();
+
+      /* Budget from the start of the run: the work already done counts towards
+       * the quantum, so only the remainder is worth waiting out. */
+      if (pace_period_us)
       {
-         ui_companion_cocoatouch_event_command(
-               NULL, CMD_EVENT_MENU_SAVE_CURRENT_CONFIG);
-   //      main_exit(NULL);
-   //      exit(0); //禁止杀死应用
-         return;
-      }
+         retro_time_t now = cpu_features_get_time_usec();
+         retro_time_t due = run_start_us + pace_period_us;
 
-      task_queue_check();
-
-      runloop_flags = runloop_get_flags();
-      if (runloop_flags & RUNLOOP_FLAG_IDLE)
-         return;
-
-      if (pace_to_content_fps)
-      {
-         /* Remainder of this frame only. Waiting a full period *after*
-          * iterate() stacked on DC's ~16ms work and played at half speed. */
-         retro_time_t period = runloop_st->frame_limit_minimum_time;
-         retro_time_t now;
-         retro_time_t due;
-
-         /* Flycast swap-interval detect can report 30 Hz; cap to PAL 20ms. */
-         if (period < 8000 || period > 20000)
-            period = 16667;
-
-         now = cpu_features_get_time_usec();
-         due = frame_start_us + period;
          if (due < now)
             due = now;
-         iterate_next_allowed_us = due;
-         rarch_schedule_pace_wake(due > now ? due - now : 1000);
+         pace_next_allowed_us = due;
+         rarch_pace_schedule_wake(due > now ? due - now : 1000);
          return;
       }
    }
 
-   iterate_next_allowed_us = 0;
-   rarch_invalidate_pace_timer();
    CFRunLoopWakeUp(CFRunLoopGetMain());
 }
 
 void rarch_start_draw_observer(void)
 {
+   rarch_pace_reset();
+
    if (iterate_observer && CFRunLoopObserverIsValid(iterate_observer))
        return;
 
@@ -292,8 +466,7 @@ void rarch_start_draw_observer(void)
 
 void rarch_stop_draw_observer(void)
 {
-    iterate_next_allowed_us = 0;
-    rarch_invalidate_pace_timer();
+    rarch_pace_reset();
     if (!iterate_observer || !CFRunLoopObserverIsValid(iterate_observer))
         return;
     CFRunLoopObserverInvalidate(iterate_observer);
@@ -1157,14 +1330,9 @@ static BOOL ManicPaused = false;
     LibretroInitial = false;
     ManicPaused = false;
     set_libretro_is_going_to_stop(true);
-    /* Stop the pump before unload so VRR/iterate cannot re-enter Flycast
+    /* Stop the pump before unload so iterate cannot re-enter Flycast
      * while CLOSE_CONTENT waits on the same thread. */
     rarch_stop_draw_observer();
-    {
-        settings_t *settings = config_get_ptr();
-        if (settings)
-            configuration_set_bool(settings, settings->bools.vrr_runloop_enable, false);
-    }
     command_event(CMD_EVENT_CLOSE_CONTENT, NULL);
     command_event(CMD_EVENT_UNLOAD_CORE, NULL);
     main_exit(NULL);
@@ -2121,16 +2289,11 @@ static NSString *_Nullable needToLoadStatePath = nil;
     if (!LibretroInitial || configs.count == 0)
         return;
 
-    __block BOOL refreshFrameLimit = NO;
     [configs enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
         if (key.length == 0)
             return;
         config_set_runtime_value(key.UTF8String, value.UTF8String ?: "");
-        if ([key isEqualToString:@"vrr_runloop_enable"])
-            refreshFrameLimit = YES;
     }];
-    if (refreshFrameLimit)
-        command_event(CMD_EVENT_SET_FRAME_LIMIT, NULL);
 }
 
 - (void)updateLibretroConfigs:(NSDictionary<NSString*, NSString*> *_Nullable)configs {
