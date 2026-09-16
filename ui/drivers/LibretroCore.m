@@ -100,7 +100,7 @@ static const NSInteger kNetplayTaskPumpMaxTicks = 15 * 30;
 static BOOL netplay_is_hosting(void)
 {
     return netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_ENABLED, NULL)
-        && netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_SERVER, NULL);
+    && netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_SERVER, NULL);
 }
 
 static void netplay_stop_task_pump(void)
@@ -118,9 +118,9 @@ static void netplay_pump_tick(void)
     if (s_netplay_advertise_pump)
         netplay_lan_advertise();
 #endif
-
+    
     s_netplay_task_pump_ticks++;
-
+    
     BOOL needScan = (s_netplay_host_list_completion != nil
                      || s_netplay_lan_host_list_completion != nil);
     if ((!needScan && !s_netplay_advertise_pump)
@@ -132,13 +132,13 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
 {
     if (![[LibretroCore sharedInstance] isPaused])
         return;
-
+    
     if (advertise)
         s_netplay_advertise_pump = YES;
-
+    
     if (s_netplay_task_pump)
         return;
-
+    
     s_netplay_task_pump_ticks = 0;
     s_netplay_task_pump = [NSTimer timerWithTimeInterval:1.0 / 30.0
                                                  repeats:YES
@@ -346,48 +346,51 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
 }
 
 - (void)handleUIPress:(UIPress *)press withEvent:(UIPressesEvent *)event down:(BOOL)down {
-   NSString       *ch;
-   uint32_t character = 0;
-   uint32_t mod       = 0;
-   NSUInteger mods    = 0;
-   if (@available(iOS 13.4, tvOS 13.4, *))
-   {
-      ch = (NSString*)press.key.characters;
-      mods = event.modifierFlags;
-   }
-
-   if (mods & UIKeyModifierAlphaShift)
-      mod |= RETROKMOD_CAPSLOCK;
-   if (mods & UIKeyModifierShift)
-      mod |= RETROKMOD_SHIFT;
-   if (mods & UIKeyModifierControl)
-      mod |= RETROKMOD_CTRL;
-   if (mods & UIKeyModifierAlternate)
-      mod |= RETROKMOD_ALT;
-   if (mods & UIKeyModifierCommand)
-      mod |= RETROKMOD_META;
-   if (mods & UIKeyModifierNumericPad)
-      mod |= RETROKMOD_NUMLOCK;
-
-   if (ch && ch.length != 0)
-   {
-      unsigned i;
-      character = [ch characterAtIndex:0];
-
-      apple_input_keyboard_event(down,
-                                 (uint32_t)press.key.keyCode, 0, mod,
-                                 RETRO_DEVICE_KEYBOARD);
-
-      for (i = 1; i < ch.length; i++)
-         apple_input_keyboard_event(down,
-                                    0, [ch characterAtIndex:i], mod,
-                                    RETRO_DEVICE_KEYBOARD);
-   }
-
-   if (@available(iOS 13.4, tvOS 13.4, *))
-      apple_input_keyboard_event(down,
-                                 (uint32_t)press.key.keyCode, character, mod,
-                                 RETRO_DEVICE_KEYBOARD);
+    if (!_isRunning) {
+        return;
+    }
+    NSString       *ch;
+    uint32_t character = 0;
+    uint32_t mod       = 0;
+    NSUInteger mods    = 0;
+    if (@available(iOS 13.4, tvOS 13.4, *))
+    {
+        ch = (NSString*)press.key.characters;
+        mods = event.modifierFlags;
+    }
+    
+    if (mods & UIKeyModifierAlphaShift)
+        mod |= RETROKMOD_CAPSLOCK;
+    if (mods & UIKeyModifierShift)
+        mod |= RETROKMOD_SHIFT;
+    if (mods & UIKeyModifierControl)
+        mod |= RETROKMOD_CTRL;
+    if (mods & UIKeyModifierAlternate)
+        mod |= RETROKMOD_ALT;
+    if (mods & UIKeyModifierCommand)
+        mod |= RETROKMOD_META;
+    if (mods & UIKeyModifierNumericPad)
+        mod |= RETROKMOD_NUMLOCK;
+    
+    if (ch && ch.length != 0)
+    {
+        unsigned i;
+        character = [ch characterAtIndex:0];
+        
+        apple_input_keyboard_event(down,
+                                   (uint32_t)press.key.keyCode, 0, mod,
+                                   RETRO_DEVICE_KEYBOARD);
+        
+        for (i = 1; i < ch.length; i++)
+            apple_input_keyboard_event(down,
+                                       0, [ch characterAtIndex:i], mod,
+                                       RETRO_DEVICE_KEYBOARD);
+    }
+    
+    if (@available(iOS 13.4, tvOS 13.4, *))
+        apple_input_keyboard_event(down,
+                                   (uint32_t)press.key.keyCode, character, mod,
+                                   RETRO_DEVICE_KEYBOARD);
 }
 
 - (void)keyboardEvent:(UIEvent *_Nonnull)event {
@@ -397,29 +400,29 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     NSNumber *isKeyDownNum     = [event valueForKey:@"_isKeyDown"];
     NSNumber *modifierFlagsNum = [event valueForKey:@"_modifierFlags"];
     NSString *unmodifiedInput  = [event valueForKey:@"_unmodifiedInput"];
-
+    
     if (!keyCodeNum || !isKeyDownNum || !modifierFlagsNum) {
         return;
     }
-
+    
     NSInteger hidKeyCode   = keyCodeNum.integerValue;
     BOOL isKeyDown         = isKeyDownNum.boolValue;
     NSInteger rawModifiers = modifierFlagsNum.integerValue;
-
+    
     // ── 1. 计算 RETROKMOD 位掩码 ─────────────────────────────────────────
     static const NSInteger kShift   = 1 << 17; // UIKeyModifierShift
     static const NSInteger kCtrl    = 1 << 18; // UIKeyModifierControl
     static const NSInteger kAlt     = 1 << 19; // UIKeyModifierAlternate
     static const NSInteger kMeta    = 1 << 20; // UIKeyModifierCommand
     static const NSInteger kCapsLk  = 1 << 16; // UIKeyModifierAlphaShift
-
+    
     uint32_t newMods = RETROKMOD_NONE;
     if (rawModifiers & kShift)  newMods |= RETROKMOD_SHIFT;
     if (rawModifiers & kCtrl)   newMods |= RETROKMOD_CTRL;
     if (rawModifiers & kAlt)    newMods |= RETROKMOD_ALT;
     if (rawModifiers & kMeta)   newMods |= RETROKMOD_META;
     if (rawModifiers & kCapsLk) newMods |= RETROKMOD_CAPSLOCK;
-
+    
     // ── 2. HID Usage → RETROK 映射表（初始化一次）────────────────────────
     static unsigned hidToRetrok[0x200];
     static dispatch_once_t onceToken;
@@ -517,31 +520,31 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
         hidToRetrok[0xE4] = RETROK_RCTRL;  hidToRetrok[0xE5] = RETROK_RSHIFT;
         hidToRetrok[0xE6] = RETROK_RALT;   hidToRetrok[0xE7] = RETROK_RMETA;
     });
-
+    
     // ── 3. 统一的 activeKeys 跟踪（参考 KeyboardResponder.activeKeyPresses）──
     // 字典存储每个 HID keyCode 的 {retrok, isActive}，用于：
     //   a) 去重（过滤 key-repeat）
     //   b) keyUp 时使用按下时记录的 retrok（因为 keyUp 时 _unmodifiedInput 可能无效）
     //   c) 修饰键也统一走此路径，不再单独 early return
-
+    
     // activeKeys: key=HID keyCode, value=@[@(retrok), @(isActive)]
     static NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *activeKeys = nil;
     static dispatch_once_t keysOnce;
     dispatch_once(&keysOnce, ^{ activeKeys = [NSMutableDictionary dictionary]; });
-
+    
     NSNumber *keyNum = @(hidKeyCode);
     NSArray<NSNumber *> *previousEntry = activeKeys[keyNum];
     BOOL previousIsActive = previousEntry ? previousEntry[1].boolValue : NO;
-
+    
     // 参考 KeyboardResponder: guard previousKeyPress?.isActive != isActive
     // 过滤重复的 down/up 事件（包括 key-repeat 和重复 up）
     if (previousEntry && previousIsActive == isKeyDown) {
         return;
     }
-
+    
     // ── 4. 确定 RETROK 值 ────────────────────────────────────────────────
     unsigned retrok = RETROK_UNKNOWN;
-
+    
     if (!isKeyDown && previousEntry) {
         // keyUp 时优先使用按下时记录的 retrok（参考 KeyboardResponder: previousKeyPress?.key）
         // 因为 _unmodifiedInput 在 keyUp 时可能无效或不同
@@ -567,14 +570,14 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
             }
         }
     }
-
+    
     // 更新修饰键状态（参考 KeyboardResponder 的 defer 语义：无论是否发送事件都要更新）
     _keyboardMods = newMods;
-
+    
     if (retrok == RETROK_UNKNOWN) {
         return;
     }
-
+    
     // ── 5. 更新 activeKeys 并发送事件 ────────────────────────────────────
     if (isKeyDown) {
         activeKeys[keyNum] = @[@(retrok), @YES];
@@ -900,7 +903,7 @@ static void cheevosDidTrigger(uint32_t type, void* object1, void* object2) {
             
             achievement.isProgressAchievement = YES;
             achievement.show = YES;
-
+            
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:RetroAchievementsNotification object:achievement];
             });
@@ -986,7 +989,7 @@ static void libretroLogCallback(enum retro_log_level level, const char *fmt, va_
     char buffer[4096];
     vsnprintf(buffer, sizeof(buffer), fmt, args);
     NSString *logMessage = [NSString stringWithUTF8String:buffer] ?: @"";
-
+    
     if (!g_enableMonitorLibretroLog) {
         return;
     }
@@ -1146,11 +1149,11 @@ static AzaharButtonConfig s_azahar_last_button_config = AzaharButtonConfigSingle
 
 // C callback that will be called by the Azahar core (often off the main thread).
 static void azahar_keyboard_request_callback(
-    const struct retro_azahar_keyboard_config_local* _Nullable config) {
+                                             const struct retro_azahar_keyboard_config_local* _Nullable config) {
     if (!s_azahar_keyboard_callback || !config) {
         return;
     }
-
+    
     s_azahar_last_button_config = (AzaharButtonConfig)config->button_config;
     
     AzaharKeyboardConfig *objcConfig = [[AzaharKeyboardConfig alloc] init];
@@ -1181,7 +1184,7 @@ static void azahar_keyboard_request_callback(
     objcConfig.preventBackslash = config->prevent_backslash;
     objcConfig.preventProfanity = config->prevent_profanity;
     objcConfig.enableCallback = config->enable_callback;
-
+    
     void (^callback)(AzaharKeyboardConfig *) = s_azahar_keyboard_callback;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (callback) {
@@ -1203,10 +1206,10 @@ static void azahar_keyboard_request_callback(
     }
     
     typedef void (*retro_azahar_set_keyboard_callback_t)(
-        void (*)(const struct retro_azahar_keyboard_config_local*));
+                                                         void (*)(const struct retro_azahar_keyboard_config_local*));
     retro_azahar_set_keyboard_callback_t set_callback =
-        (retro_azahar_set_keyboard_callback_t)dylib_proc(runloop_st->lib_handle,
-                                                         "retro_azahar_set_keyboard_callback");
+    (retro_azahar_set_keyboard_callback_t)dylib_proc(runloop_st->lib_handle,
+                                                     "retro_azahar_set_keyboard_callback");
     
     if (set_callback) {
         if (callback) {
@@ -1227,7 +1230,7 @@ static void azahar_keyboard_request_callback(
     
     typedef void (*retro_azahar_keyboard_input_t)(const char*, int);
     retro_azahar_keyboard_input_t keyboard_input =
-        (retro_azahar_keyboard_input_t)dylib_proc(runloop_st->lib_handle, "retro_azahar_keyboard_input");
+    (retro_azahar_keyboard_input_t)dylib_proc(runloop_st->lib_handle, "retro_azahar_keyboard_input");
     
     if (keyboard_input) {
         const char* text_cstr = text ? [text UTF8String] : NULL;
@@ -1260,7 +1263,7 @@ static void azahar_keyboard_request_callback(
                 button = 0;
                 break;
         }
-
+        
         keyboard_input(text_cstr, button);
     }
 #endif
@@ -1280,7 +1283,7 @@ static void azahar_keyboard_request_callback(
     
     typedef void (*retro_azahar_install_cia_t)(const char*);
     retro_azahar_install_cia_t install_cia =
-        (retro_azahar_install_cia_t)dylib_proc(lib, "retro_azahar_install_cia");
+    (retro_azahar_install_cia_t)dylib_proc(lib, "retro_azahar_install_cia");
     
     if (install_cia) {
         const char* path_cstr = [path UTF8String];
@@ -1324,13 +1327,13 @@ static void azahar_keyboard_request_callback(
     if (!corePath) {
         return nil;
     }
-
+    
     NSString *dylibPath = [corePath stringByAppendingPathComponent:@"ppsspp.libretro"];
     dylib_t lib = dylib_load([dylibPath UTF8String]);
     if (!lib) {
         return nil;
     }
-
+    
     typedef struct {
         int success;
         const char *title;
@@ -1339,20 +1342,20 @@ static void azahar_keyboard_request_callback(
         const void *iconData;
         int iconSize;
     } retro_ppsspp_zip_install_result;
-
+    
     typedef const retro_ppsspp_zip_install_result* (*retro_ppsspp_install_zip_t)(const char*, const char*);
     retro_ppsspp_install_zip_t install_psp_zip = (retro_ppsspp_install_zip_t)dylib_proc(lib, "retro_ppsspp_install_zip");
     if (!install_psp_zip) {
         dylib_close(lib);
         return nil;
     }
-
+    
     const retro_ppsspp_zip_install_result *result = install_psp_zip([zipPath UTF8String], [destDir UTF8String]);
     LibretroPSPGame *game = nil;
-
+    
     if (result && result->success) {
         game = [[LibretroPSPGame alloc] init];
-
+        
         if (result->title) {
             game.title = [NSString stringWithUTF8String:result->title];
         }
@@ -1367,7 +1370,7 @@ static void azahar_keyboard_request_callback(
             game.icon = [UIImage imageWithData:iconData];
         }
     }
-
+    
     dylib_close(lib);
     return game;
 }
@@ -1406,14 +1409,14 @@ static void netplayDidTrigger(int event, const char *info)
 }
 
 static void netplay_refresh_rooms_http_cb(retro_task_t *task, void *task_data,
-      void *user_data, const char *error)
+                                          void *user_data, const char *error)
 {
     void (^completion)(NSArray<LibretroHost *> * _Nullable) = s_netplay_host_list_completion;
     s_netplay_host_list_completion = nil;
-
+    
     if (!completion)
         return;
-
+    
     http_transfer_data_t *data = (http_transfer_data_t *)task_data;
     if (error || !data || !data->data || !data->len || data->status != 200)
     {
@@ -1422,7 +1425,7 @@ static void netplay_refresh_rooms_http_cb(retro_task_t *task, void *task_data,
         });
         return;
     }
-
+    
     char *room_data = (char *)malloc(data->len + 1);
     if (!room_data)
     {
@@ -1433,7 +1436,7 @@ static void netplay_refresh_rooms_http_cb(retro_task_t *task, void *task_data,
     }
     memcpy(room_data, data->data, data->len);
     room_data[data->len] = '\0';
-
+    
     NSMutableArray<LibretroHost *> *hosts = [NSMutableArray array];
     if (!string_is_empty(room_data))
     {
@@ -1451,7 +1454,7 @@ static void netplay_refresh_rooms_http_cb(retro_task_t *task, void *task_data,
         netplay_rooms_free();
     }
     free(room_data);
-
+    
     NSArray<LibretroHost *> *result = [hosts copy];
     dispatch_async(dispatch_get_main_queue(), ^{
         completion(result);
@@ -1462,14 +1465,14 @@ static void netplay_refresh_lan_hosts_cb(const void *data)
 {
     void (^completion)(NSArray<LibretroHost *> * _Nullable) = s_netplay_lan_host_list_completion;
     s_netplay_lan_host_list_completion = nil;
-
+    
     if (!completion)
         return;
-
+    
     const struct netplay_host_list *hosts =
-        (const struct netplay_host_list *)data;
+    (const struct netplay_host_list *)data;
     NSMutableArray<LibretroHost *> *result = [NSMutableArray array];
-
+    
     if (hosts && hosts->size > 0)
     {
         for (size_t i = 0; i < hosts->size; i++)
@@ -1479,7 +1482,7 @@ static void netplay_refresh_lan_hosts_cb(const void *data)
                 [result addObject:host];
         }
     }
-
+    
     NSArray<LibretroHost *> *hostsCopy = [result copy];
     dispatch_async(dispatch_get_main_queue(), ^{
         completion(hostsCopy);
@@ -1490,18 +1493,18 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
 {
     if (nickname.length == 0)
         return;
-
+    
     settings_t *settings = config_get_ptr();
     if (!settings)
         return;
-
+    
     NSString *trimmed = [nickname stringByTrimmingCharactersInSet:
-        NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                         NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmed.length == 0)
         return;
-
+    
     strlcpy(settings->paths.username, trimmed.UTF8String,
-        sizeof(settings->paths.username));
+            sizeof(settings->paths.username));
 }
 
 - (BOOL)startNetplayHost:(NSString *)nickname
@@ -1528,10 +1531,10 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
             completion(nil);
         return;
     }
-
+    
     s_netplay_host_list_completion = [completion copy];
     if (!task_push_http_transfer(FILE_PATH_LOBBY_LIBRETRO_URL "list", true, NULL,
-            netplay_refresh_rooms_http_cb, NULL))
+                                 netplay_refresh_rooms_http_cb, NULL))
     {
         s_netplay_host_list_completion = nil;
         if (completion)
@@ -1549,7 +1552,7 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
             completion(nil);
         return;
     }
-
+    
     s_netplay_lan_host_list_completion = [completion copy];
     if (!task_push_netplay_lan_scan(netplay_refresh_lan_hosts_cb, 2500))
     {
@@ -1565,30 +1568,30 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
 {
     if (!self.isRunning || !host)
         return NO;
-
+    
     netplay_apply_nickname(nickname);
-
+    
     char hostname[512];
     hostname[0] = '\0';
-
+    
     if (host.hostMethod == LibretroHostMethodMITM
         && host.mitmAddress.length > 0
         && host.mitmSession.length > 0)
     {
         snprintf(hostname, sizeof(hostname), "%s|%d|%s",
-            host.mitmAddress.UTF8String,
-            (int)host.mitmPort,
-            host.mitmSession.UTF8String);
+                 host.mitmAddress.UTF8String,
+                 (int)host.mitmPort,
+                 host.mitmSession.UTF8String);
     }
     else if (host.address.length > 0)
     {
         snprintf(hostname, sizeof(hostname), "%s|%d",
-            host.address.UTF8String,
-            (int)host.port);
+                 host.address.UTF8String,
+                 (int)host.port);
     }
     else
         return NO;
-
+    
     netplay_driver_ctl(RARCH_NETPLAY_CTL_ENABLE_CLIENT, NULL);
     return command_event(CMD_EVENT_NETPLAY_INIT_DIRECT, (void *)hostname);
 }
@@ -1602,15 +1605,15 @@ static void netplay_apply_nickname(NSString * _Nullable nickname)
 {
     if (!self.isRunning)
         return NO;
-
+    
     if (netplay_driver_ctl(RARCH_NETPLAY_CTL_USE_CORE_PACKET_INTERFACE, NULL))
         return YES;
-
+    
     uint64_t quirks = core_serialization_quirks();
     if (quirks & (RETRO_SERIALIZATION_QUIRK_INCOMPLETE
-                | RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION))
+                  | RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION))
         return NO;
-
+    
     return core_serialize_size() > 0;
 }
 
@@ -1634,7 +1637,7 @@ static void eka2l1_input_dialog_request_callback(const retro_eka2l1_input_dialog
     if (!s_eka2l1_input_dialog_callback || !request) {
         return;
     }
-
+    
     void (^callback)(NSString *_Nullable, NSInteger) = s_eka2l1_input_dialog_callback;
     if (request->max_length < 0) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1642,7 +1645,7 @@ static void eka2l1_input_dialog_request_callback(const retro_eka2l1_input_dialog
         });
         return;
     }
-
+    
     NSString *initialText = request->initial_text ? [NSString stringWithUTF8String:request->initial_text] : @"";
     NSInteger maxLength = request->max_length;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1654,12 +1657,12 @@ static void eka2l1_question_dialog_request_callback(const retro_eka2l1_question_
     if (!s_eka2l1_question_dialog_callback || !request || !request->text) {
         return;
     }
-
+    
     NSString *text = [NSString stringWithUTF8String:request->text];
     NSString *buttonYes = request->button_yes ? [NSString stringWithUTF8String:request->button_yes] : nil;
     NSString *buttonNo = request->button_no ? [NSString stringWithUTF8String:request->button_no] : nil;
     void (^callback)(NSString *, NSString *, NSString *) = s_eka2l1_question_dialog_callback;
-
+    
     dispatch_async(dispatch_get_main_queue(), ^{
         callback(text, buttonYes, buttonNo);
     });
@@ -1672,18 +1675,18 @@ static void eka2l1_question_dialog_request_callback(const retro_eka2l1_question_
     if (!runloop_st || !runloop_st->lib_handle) {
         return;
     }
-
+    
     s_eka2l1_input_dialog_callback = [inputCallback copy];
     s_eka2l1_question_dialog_callback = [questionCallback copy];
-
+    
     typedef void (*set_input_dialog_callback_t)(void (*)(const retro_eka2l1_input_dialog_request_local *));
     typedef void (*set_question_dialog_callback_t)(void (*)(const retro_eka2l1_question_dialog_request_local *));
-
+    
     set_input_dialog_callback_t set_input_callback =
-        (set_input_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_input_dialog_callback");
+    (set_input_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_input_dialog_callback");
     set_question_dialog_callback_t set_question_callback =
-        (set_question_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_question_dialog_callback");
-
+    (set_question_dialog_callback_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_set_question_dialog_callback");
+    
     if (set_input_callback) {
         set_input_callback(inputCallback ? eka2l1_input_dialog_request_callback : NULL);
         RARCH_LOG("[EKA2L1] input-dialog callback %s to core\n",
@@ -1707,7 +1710,7 @@ static void eka2l1_question_dialog_request_callback(const retro_eka2l1_question_
     if (!runloop_st || !runloop_st->lib_handle) {
         return;
     }
-
+    
     typedef void (*submit_input_t)(const char *);
     submit_input_t submit_input = (submit_input_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_submit_input");
     if (submit_input) {
@@ -1722,10 +1725,10 @@ static void eka2l1_question_dialog_request_callback(const retro_eka2l1_question_
     if (!runloop_st || !runloop_st->lib_handle) {
         return;
     }
-
+    
     typedef void (*submit_question_response_t)(int);
     submit_question_response_t submit_question_response =
-        (submit_question_response_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_submit_question_response");
+    (submit_question_response_t)dylib_proc(runloop_st->lib_handle, "retro_eka2l1_submit_question_response");
     if (submit_question_response) {
         submit_question_response((int)value);
     }
@@ -1851,7 +1854,7 @@ static dylib_t LibretroEKA2L1Open(BOOL *libOwned) {
         return cached;
     }
     [LibretroEKA2L1MgmtLock() unlock];
-
+    
     NSString *corePath = [[NSBundle mainBundle] pathForResource:@"eka2l1.libretro" ofType:@"framework" inDirectory:@"Frameworks"];
     if (!corePath) {
         return NULL;
@@ -1861,7 +1864,7 @@ static dylib_t LibretroEKA2L1Open(BOOL *libOwned) {
     if (!lib) {
         return NULL;
     }
-
+    
     [LibretroEKA2L1MgmtLock() lock];
     if (g_eka2l1_mgmt_lib) {
         dylib_close(lib);
@@ -1901,11 +1904,11 @@ static void LibretroEKA2L1ShutdownManagement(void) {
         g_eka2l1_mgmt_lib_owned = NO;
     }
     [LibretroEKA2L1MgmtLock() unlock];
-
+    
     if (lib) {
         typedef void (*shutdown_engine_t)(void);
         shutdown_engine_t shutdown_engine =
-            (shutdown_engine_t)dylib_proc(lib, "retro_eka2l1_shutdown_engine");
+        (shutdown_engine_t)dylib_proc(lib, "retro_eka2l1_shutdown_engine");
         if (shutdown_engine) {
             shutdown_engine();
         }
@@ -2045,7 +2048,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         LibretroSymbianRomInstallResult mappedResult = LibretroSymbianRomInstallResultUnknown;
         LibretroSymbianDevice *device = nil;
-
+        
         BOOL libOwned = YES;
         dylib_t lib = LibretroEKA2L1Open(&libOwned);
         if (lib && LibretroEKA2L1ConfigureStorage(lib)) {
@@ -2064,7 +2067,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
                     if (device && !device.firmwareCode.length) {
                         typedef const retro_eka2l1_device_entry *(*get_devices_t)(uint32_t *);
                         get_devices_t get_devices =
-                            (get_devices_t)dylib_proc(lib, "retro_eka2l1_get_devices");
+                        (get_devices_t)dylib_proc(lib, "retro_eka2l1_get_devices");
                         if (get_devices) {
                             uint32_t count = 0;
                             const retro_eka2l1_device_entry *devs = get_devices(&count);
@@ -2077,7 +2080,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
             }
         }
         LibretroEKA2L1Close(lib, libOwned);
-
+        
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) {
                 completion(mappedResult, device);
@@ -2092,7 +2095,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         LibretroSymbianGameInstallResult mappedResult = LibretroSymbianGameInstallResultUnknown;
         LibretroSymbianGame *game = nil;
-
+        
         BOOL libOwned = YES;
         dylib_t lib = LibretroEKA2L1Open(&libOwned);
         if (lib && LibretroEKA2L1ConfigureStorage(lib)) {
@@ -2108,7 +2111,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
             }
         }
         LibretroEKA2L1Close(lib, libOwned);
-
+        
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) {
                 completion(mappedResult, game);
@@ -2127,7 +2130,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
         LibretroEKA2L1Close(lib, libOwned);
         return;
     }
-
+    
     typedef bool (*uninstall_package_t)(uint32_t, int32_t);
     uninstall_package_t uninstall_package = (uninstall_package_t)dylib_proc(lib, "retro_eka2l1_uninstall_package");
     if (uninstall_package) {
@@ -2193,7 +2196,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
 }
 
 + (NSArray<LibretroSymbianGame*> *_Nullable)getSymbianGamesForDeviceIndex:(NSInteger)deviceIndex
-                                                                appKinds:(LibretroSymbianAppKind)appKinds {
+                                                                 appKinds:(LibretroSymbianAppKind)appKinds {
     BOOL libOwned = YES;
     dylib_t lib = LibretroEKA2L1Open(&libOwned);
     if (!lib) {
@@ -2203,10 +2206,10 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
         LibretroEKA2L1Close(lib, libOwned);
         return nil;
     }
-
+    
     typedef const retro_eka2l1_game_entry *(*get_games_t)(uint32_t, uint32_t, uint32_t *);
     get_games_t get_games = (get_games_t)dylib_proc(lib, "retro_eka2l1_get_games");
-
+    
     NSArray<LibretroSymbianGame *> *result = nil;
     if (get_games) {
         uint32_t count = 0;
@@ -2222,7 +2225,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
             result = items;
         }
     }
-
+    
     LibretroEKA2L1Close(lib, libOwned);
     return result;
 }
@@ -2241,7 +2244,7 @@ static LibretroSymbianGame *LibretroSymbianGameFromGameEntry(const retro_eka2l1_
         LibretroEKA2L1Close(lib, libOwned);
         return;
     }
-
+    
     typedef bool (*uninstall_rom_t)(const char *);
     uninstall_rom_t uninstall_rom = (uninstall_rom_t)dylib_proc(lib, "retro_eka2l1_uninstall_rom");
     if (uninstall_rom) {
