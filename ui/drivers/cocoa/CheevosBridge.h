@@ -164,4 +164,10 @@ typedef void(^GetGameInfoCompletion)(GetGameInfoResult result, CheevosGame * _Nu
          reuseInGameClient:(BOOL)reuseInGameClient
                   callback:(GetGameInfoCompletion _Nullable)callback;
 
+/// consoleId is RC_CONSOLE_GAMECUBE (16) or RC_CONSOLE_WII (19) for Dolphin games; 0 otherwise.
++ (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+                 consoleId:(NSUInteger)consoleId
+         reuseInGameClient:(BOOL)reuseInGameClient
+                  callback:(GetGameInfoCompletion _Nullable)callback;
+
 @end

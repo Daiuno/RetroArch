@@ -201,6 +201,7 @@ ACHIEVEMENTS
 #include "../cheevos/cheevos.c"
 #include "../cheevos/cheevos_client.c"
 #include "../cheevos/cheevos_menu.c"
+#include "../cheevos/cheevos_dolphin.c"
 
 #include "../deps/rcheevos/src/rc_client.c"
 #include "../deps/rcheevos/src/rc_compat.c"

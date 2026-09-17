@@ -9,11 +9,13 @@
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonDigest.h>
 #import "CheevosBridge.h"
-// 必须在包含 rc_client.h 之前定义
+/* Must be defined before including rc_client.h. */
 #define RC_CLIENT_SUPPORTS_HASH 1
 
 #import "deps/rcheevos/include/rc_client.h"
+#import "deps/rcheevos/include/rc_consoles.h"
 #import "cheevos/cheevos.h"
+#import "cheevos/cheevos_dolphin.h"
 
 @interface CheevosLoginCtx : NSObject
 @property (nonatomic, copy) LoginCompletion block;
@@ -25,6 +27,7 @@
 @interface CheevosGameInfoCtx : NSObject
 @property (nonatomic, copy) GetGameInfoCompletion block;
 @property (nonatomic, copy) NSString *path;
+@property (nonatomic, assign) NSUInteger consoleId;
 @end
 
 @implementation CheevosGameInfoCtx
@@ -574,6 +577,28 @@ static CheevosGame* buildGameObj(rc_client_t* client) {
 
 #pragma mark - C callbacks
 
+static void load_game_callback_c(int result, const char* error_message, rc_client_t* client, void* userdata);
+
+static void identify_game_for_path(rc_client_t *client, NSString *path, NSUInteger consoleId, CheevosGameInfoCtx *ctx) {
+    uint32_t requested = (uint32_t)consoleId;
+    BOOL dolphin = (requested == RC_CONSOLE_GAMECUBE || requested == RC_CONSOLE_WII);
+    uint32_t id = requested;
+
+    rcheevos_reset_cdreader_hooks();
+
+    /* DiscIO filereader is installed only for this Dolphin identify, then cleared. */
+    if (dolphin) {
+        id = rcheevos_dolphin_prepare_client(client, path.UTF8String, requested);
+    }
+
+    rc_client_begin_identify_and_load_game(client, id,
+        path.UTF8String, NULL, 0, load_game_callback_c, (__bridge_retained void*)ctx);
+
+    if (dolphin) {
+        rcheevos_dolphin_finish_client(client);
+    }
+}
+
 static void login_callback_c(int result, const char* error_message, rc_client_t* client, void* userdata) {
     CheevosLoginCtx* ctx = (__bridge_transfer CheevosLoginCtx*)userdata;
     LoginCompletion block = ctx.block;
@@ -647,32 +672,6 @@ static void load_game_callback_c(int result, const char* error_message, rc_clien
                 return;
             }
             
-            /**
-             RC_OK    Game was successfully loaded.
-             游戏已成功加载。
-             
-             RC_NO_GAME_LOADED    The game could not be identified.
-             游戏无法识别。
-             
-             RC_LOGIN_REQUIRED    A logged in user is required.
-             需要登录用户。
-             
-             RC_ABORTED    The process was canceled before it finished (rc_client_unload_game was called, or another game started loading).
-             过程在完成前被取消（调用了 rc_client_unload_game，或开始加载其他游戏）。
-             
-             RC_INVALID_STATE    Generic failure. See error_message for details.
-             通用失败。详情请见 error_message 。
-             
-             RC_INVALID_JSON    Server response could not be processed.
-             服务器响应无法处理。
-             
-             RC_MISSING_VALUE    Server response was not complete.
-             服务器响应不完整。
-             
-             RC_API_FAILURE    Error occurred on the server. See error_message for details.
-             服务器发生错误。详情请见 error_message 。
-             */
-            
             GetGameInfoResult getGameInfoResult = GetGameInfoResultSuccess;
             if (result != RC_OK) {
                 if (result == RC_NO_GAME_LOADED) {
@@ -700,6 +699,13 @@ static NSString *g_password = nil;
     g_appVersion = appVersion;
     g_requireCredentials = requireCredentials;
     g_updateCredentials = updateCredentials;
+
+    NSString *dolphinCore = [[NSBundle mainBundle] pathForResource:@"dolphin.libretro"
+                                                            ofType:@"framework"
+                                                       inDirectory:@"Frameworks"];
+    if (dolphinCore.length > 0) {
+        rcheevos_dolphin_set_core_path(dolphinCore.UTF8String);
+    }
 }
 
 + (void)LoginCheevos:(NSString * _Nonnull)userName
@@ -741,10 +747,17 @@ static NSString *g_password = nil;
 
 + (void)getCheevosGameInfo:(NSString *)gamePath
                   callback:(GetGameInfoCompletion)callback {
-    [self getCheevosGameInfo:gamePath reuseInGameClient:NO callback:callback];
+    [self getCheevosGameInfo:gamePath consoleId:0 reuseInGameClient:NO callback:callback];
 }
 
 + (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+         reuseInGameClient:(BOOL)reuseInGameClient
+                  callback:(GetGameInfoCompletion _Nullable)callback {
+    [self getCheevosGameInfo:gamePath consoleId:0 reuseInGameClient:reuseInGameClient callback:callback];
+}
+
++ (void)getCheevosGameInfo:(NSString * _Nonnull)gamePath
+                 consoleId:(NSUInteger)consoleId
          reuseInGameClient:(BOOL)reuseInGameClient
                   callback:(GetGameInfoCompletion _Nullable)callback {
     if (reuseInGameClient) {
@@ -785,11 +798,8 @@ static NSString *g_password = nil;
                     CheevosGameInfoCtx* ctx = [CheevosGameInfoCtx new];
                     ctx.block = callback;
                     ctx.path = gamePath;
-                    
-                    rcheevos_reset_cdreader_hooks();
-
-                    rc_client_begin_identify_and_load_game(client, 0 /* RC_CONSOLE_UNKNOWN */,
-                        ctx.path.UTF8String, NULL, 0, load_game_callback_c, (__bridge_retained void*)ctx);
+                    ctx.consoleId = consoleId;
+                    identify_game_for_path(client, gamePath, consoleId, ctx);
                 } else {
                     if (callback) callback(GetGameInfoResultNoLogin, nil);
                     return;
@@ -802,11 +812,8 @@ static NSString *g_password = nil;
     CheevosGameInfoCtx* ctx = [CheevosGameInfoCtx new];
     ctx.block = callback;
     ctx.path = gamePath;
-
-    rcheevos_reset_cdreader_hooks();
-    
-    rc_client_begin_identify_and_load_game(client, 0 /* RC_CONSOLE_UNKNOWN */,
-        ctx.path.UTF8String, NULL, 0, load_game_callback_c, (__bridge_retained void*)ctx);
+    ctx.consoleId = consoleId;
+    identify_game_for_path(client, gamePath, consoleId, ctx);
 }
 
 @end

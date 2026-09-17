@@ -55,6 +55,7 @@
 #include "cheevos.h"
 #include "cheevos_client.h"
 #include "cheevos_menu.h"
+#include "cheevos_dolphin.h"
 #include "cheevos_locals.h"
 
 #include "../network/netplay/netplay.h"
@@ -1626,8 +1627,26 @@ bool rcheevos_load(const void *data)
       gfx_widget_set_cheevos_set_loading(true);
 #endif
 
-   rc_client_begin_identify_and_load_game(rcheevos_locals.client, RC_CONSOLE_UNKNOWN,
-      info->path, (const uint8_t*)info->data, info->size, rcheevos_client_load_game_callback, NULL);
+   {
+      uint32_t console_id = RC_CONSOLE_UNKNOWN;
+      bool dolphin_hash = rcheevos_is_dolphin_core();
+
+      /* DiscIO hashing is Dolphin-only so other cores keep default fopen/CD readers. */
+      if (dolphin_hash)
+      {
+         const char *core_path = path_get(RARCH_PATH_CORE);
+         if (!string_is_empty(core_path))
+            rcheevos_dolphin_set_core_path(core_path);
+         console_id = rcheevos_dolphin_prepare_client(rcheevos_locals.client,
+               info->path, RC_CONSOLE_UNKNOWN);
+      }
+
+      rc_client_begin_identify_and_load_game(rcheevos_locals.client, console_id,
+         info->path, (const uint8_t*)info->data, info->size, rcheevos_client_load_game_callback, NULL);
+
+      if (dolphin_hash)
+         rcheevos_dolphin_finish_client(rcheevos_locals.client);
+   }
 
    return true;
 }
@@ -1663,9 +1682,21 @@ void rcheevos_change_disc(const char* new_disc_path, bool initial_disc)
 {
    if (rcheevos_locals.client)
    {
+      bool dolphin_hash = rcheevos_is_dolphin_core();
+      if (dolphin_hash)
+      {
+         const char *core_path = path_get(RARCH_PATH_CORE);
+         if (!string_is_empty(core_path))
+            rcheevos_dolphin_set_core_path(core_path);
+         rcheevos_dolphin_prepare_client(rcheevos_locals.client, new_disc_path, RC_CONSOLE_UNKNOWN);
+      }
+
       /* rcheevos 12 renamed the 6-arg path hasher to identify_and_change_media. */
       rc_client_begin_identify_and_change_media(rcheevos_locals.client, new_disc_path,
          NULL, 0, rcheevos_client_change_media_callback, NULL);
+
+      if (dolphin_hash)
+         rcheevos_dolphin_finish_client(rcheevos_locals.client);
    }
 }
 
