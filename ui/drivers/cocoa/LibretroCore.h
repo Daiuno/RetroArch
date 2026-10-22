@@ -102,6 +102,7 @@ typedef NS_ENUM(NSInteger, LibretroNetplayEvent) {
 - (UIViewController *)startWithCustomSaveDir:(NSString *_Nullable)customSaveDir;
 - (void)pause;
 - (BOOL)isPaused;
+- (BOOL)isCoreRunning;
 - (void)resume;
 - (void)stop;
 - (void)mute:(BOOL)mute;

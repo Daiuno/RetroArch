@@ -198,6 +198,10 @@ static void netplay_start_task_pump_if_paused(BOOL advertise)
     return [[self getRetroArch] isPaused];
 }
 
+- (BOOL)isCoreRunning {
+    return self.isRunning;
+}
+
 - (void)resume {
     s_netplay_advertise_pump = NO;
     if (!s_netplay_host_list_completion && !s_netplay_lan_host_list_completion)
