@@ -48,6 +48,10 @@
 @property (assign) BOOL cameraPreferenceSet;  // Track if preference was explicitly set
 @property (assign) BOOL enableFrontCameraMirrored;
 @property (assign) BOOL fixFrontCameraRotation;
+#if TARGET_OS_IOS
+/// Used when the device reports Unknown/FaceUp/FaceDown (e.g. right after launch or lying flat).
+@property (atomic, assign) UIDeviceOrientation lastValidOrientation;
+#endif
 
 - (bool)setupCameraSession;
 - (bool)switchCamera:(BOOL)useFrontCamera;
@@ -69,19 +73,79 @@
     return instance;
 }
 
+#if TARGET_OS_IOS
+/// Seeds lastValidOrientation from the UI, since UIDevice.orientation stays Unknown
+/// until the device is physically rotated.
+- (void)seedOrientationFromInterface {
+    void (^seed)(void) = ^{
+        UIDeviceOrientation device = [UIDevice currentDevice].orientation;
+        if (UIDeviceOrientationIsValidInterfaceOrientation(device)) {
+            self.lastValidOrientation = device;
+            return;
+        }
+
+        UIWindowScene *windowScene = nil;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class])
+                continue;
+            windowScene = (UIWindowScene *)scene;
+            if (scene.activationState == UISceneActivationStateForegroundActive)
+                break;
+        }
+        if (!windowScene)
+            return;
+
+        // Interface and device landscape values are mirrored.
+        switch (windowScene.interfaceOrientation) {
+            case UIInterfaceOrientationPortrait:
+                self.lastValidOrientation = UIDeviceOrientationPortrait;
+                break;
+            case UIInterfaceOrientationPortraitUpsideDown:
+                self.lastValidOrientation = UIDeviceOrientationPortraitUpsideDown;
+                break;
+            case UIInterfaceOrientationLandscapeLeft:
+                self.lastValidOrientation = UIDeviceOrientationLandscapeRight;
+                break;
+            case UIInterfaceOrientationLandscapeRight:
+                self.lastValidOrientation = UIDeviceOrientationLandscapeLeft;
+                break;
+            default:
+                break;
+        }
+    };
+
+    if (NSThread.isMainThread)
+        seed();
+    else
+        dispatch_async(dispatch_get_main_queue(), seed);
+}
+#endif
+
+/// Frames are rotated in captureOutput assuming portrait buffers. Every input change creates a
+/// new connection in the sensor's native landscape orientation, so call this after each one.
+/// Must run on sessionQueue.
+- (void)applyConnectionSettings {
+    AVCaptureConnection *connection = [self.output connectionWithMediaType:AVMediaTypeVideo];
+    if (!connection)
+        return;
+    connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+    if (connection.isVideoMirroringSupported) {
+        BOOL preferFront = self.cameraPreferenceSet ? self.preferFrontCamera : CAMERA_PREFER_FRONTFACING;
+        connection.videoMirrored = self.enableFrontCameraMirrored ? (preferFront ? YES : NO) : NO;
+    }
+}
+
 - (void)startSession {
+#if TARGET_OS_IOS
+    [self seedOrientationFromInterface];
+#endif
     // Use dispatch_async to ensure session is started before returning
     // This is safe because we're on the main thread and sessionQueue is a serial queue
     dispatch_async(self.sessionQueue, ^{
+        // Applied even when already running: a camera switch may have restarted the session
+        // with a fresh landscape connection.
+        [self applyConnectionSettings];
         if (!self.session.isRunning) {
-            AVCaptureConnection * connection = [self.output connectionWithMediaType:AVMediaTypeVideo];
-            if (connection) {
-                connection.videoOrientation = AVCaptureVideoOrientationPortrait;
-                if (connection.isVideoMirroringSupported) {
-                    BOOL preferFront = self.cameraPreferenceSet ? self.preferFrontCamera : CAMERA_PREFER_FRONTFACING;
-                    connection.videoMirrored = self.enableFrontCameraMirrored ? (preferFront ? YES : NO) : NO;
-                }
-            }
             [self.session startRunning];
             RARCH_LOG("[Camera]: Camera session started on background thread\n");
         }
@@ -305,6 +369,12 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         int rotationDegrees = 0;
 
         UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
+#if TARGET_OS_IOS
+        if (UIDeviceOrientationIsValidInterfaceOrientation(orientation))
+            self.lastValidOrientation = orientation;
+        else
+            orientation = self.lastValidOrientation;
+#endif
         BOOL preferFront = self.cameraPreferenceSet ? self.preferFrontCamera : CAMERA_PREFER_FRONTFACING;
         switch (orientation) {
             case UIDeviceOrientationPortrait:
@@ -695,6 +765,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
             };
             RARCH_LOG("[Camera]: Re-applied BGRA pixel format after camera switch\n");
         }
+
+        // The new input created a new connection with default orientation.
+        [self applyConnectionSettings];
 
         // Commit configuration
         [self.session commitConfiguration];
