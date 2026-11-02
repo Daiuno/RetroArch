@@ -4080,6 +4080,67 @@ static retro_time_t runloop_core_runtime_tick(
    return frame_time;
 }
 
+/* The frontend runs the core on the UI thread, and a core can change FPCR there:
+ * Dolphin writes the guest's rounding and flush-to-zero bits with msr fpcr. UIKit
+ * then runs between frames with those bits set, and Apple's image scaler faults.
+ * The core keeps its own FPCR value and the thread gets its launch value back
+ * whenever the core is not running. */
+#if defined(__APPLE__) && defined(__aarch64__)
+static uint64_t core_fpcr_host;
+static uint64_t core_fpcr_saved;
+static bool     core_fpcr_is_saved;
+
+static INLINE uint64_t core_fpcr_read(void)
+{
+   uint64_t value;
+   __asm__ __volatile__("mrs %0, fpcr" : "=r"(value));
+   return value;
+}
+
+static INLINE void core_fpcr_write(uint64_t value)
+{
+   __asm__ __volatile__("msr fpcr, %0" : : "r"(value));
+}
+
+__attribute__((constructor)) static void core_fpcr_capture_host(void)
+{
+   core_fpcr_host = core_fpcr_read();
+}
+
+/* Before retro_run: the core gets back what it left. */
+static INLINE void core_fpcr_enter(void)
+{
+   if (core_fpcr_is_saved)
+      core_fpcr_write(core_fpcr_saved);
+}
+
+/* After a core call that sets the core's state: keep it, restore the thread. */
+static INLINE void core_fpcr_leave(void)
+{
+   core_fpcr_saved    = core_fpcr_read();
+   core_fpcr_is_saved = true;
+   core_fpcr_write(core_fpcr_host);
+}
+
+/* After a core call that does not change the core's state. */
+static INLINE void core_fpcr_restore_host(void)
+{
+   core_fpcr_write(core_fpcr_host);
+}
+
+/* The core is gone: the next one must not inherit this value. */
+static INLINE void core_fpcr_forget(void)
+{
+   core_fpcr_is_saved = false;
+   core_fpcr_write(core_fpcr_host);
+}
+#else
+#define core_fpcr_enter()        ((void)0)
+#define core_fpcr_leave()        ((void)0)
+#define core_fpcr_restore_host() ((void)0)
+#define core_fpcr_forget()       ((void)0)
+#endif
+
 static bool core_unload_game(void)
 {
    runloop_state_t *runloop_st    = &runloop_state;
@@ -4093,6 +4154,7 @@ static bool core_unload_game(void)
    {
       RARCH_LOG("[Core]: Unloading game..\n");
       runloop_st->current_core.retro_unload_game();
+      core_fpcr_forget();
       runloop_st->core_poll_type_override  = POLL_TYPE_OVERRIDE_DONTCARE;
       runloop_st->current_core.flags      &= ~RETRO_CORE_FLAG_GAME_LOADED;
    }
@@ -7828,6 +7890,8 @@ bool core_load_game(retro_ctx_load_content_info_t *load_info)
    else if (content_get_flags() & CONTENT_ST_FLAG_CORE_DOES_NOT_NEED_CONTENT)
       game_loaded = runloop_st->current_core.retro_load_game(NULL);
 
+   core_fpcr_leave();
+
    if (game_loaded)
    {
       /* If 'game_loaded' is true at this point, then
@@ -7860,8 +7924,14 @@ bool core_get_system_info(struct retro_system_info *sysinfo)
 bool core_unserialize(retro_ctx_serialize_info_t *info)
 {
    runloop_state_t *runloop_st  = &runloop_state;
-   if (!info || !runloop_st->current_core.retro_unserialize(info->data_const, info->size))
+   if (!info)
       return false;
+   {
+      bool unserialized = runloop_st->current_core.retro_unserialize(info->data_const, info->size);
+      core_fpcr_leave();
+      if (!unserialized)
+         return false;
+   }
 
 #ifdef HAVE_NETWORKING
    netplay_driver_ctl(RARCH_NETPLAY_CTL_LOAD_SAVESTATE, info);
@@ -7883,6 +7953,7 @@ bool core_unserialize_special(retro_ctx_serialize_info_t *info)
 
    runloop_st->flags |=  RUNLOOP_FLAG_REQUEST_SPECIAL_SAVESTATE;
    ret = runloop_st->current_core.retro_unserialize(info->data_const, info->size);
+   core_fpcr_leave();
    runloop_st->flags &= ~RUNLOOP_FLAG_REQUEST_SPECIAL_SAVESTATE;
 
 #ifdef HAVE_NETWORKING
@@ -7896,8 +7967,14 @@ bool core_unserialize_special(retro_ctx_serialize_info_t *info)
 bool core_serialize(retro_ctx_serialize_info_t *info)
 {
    runloop_state_t *runloop_st  = &runloop_state;
-   if (!info || !runloop_st->current_core.retro_serialize(info->data, info->size))
+   if (!info)
       return false;
+   {
+      bool serialized = runloop_st->current_core.retro_serialize(info->data, info->size);
+      core_fpcr_restore_host();
+      if (!serialized)
+         return false;
+   }
    return true;
 }
 
@@ -7912,6 +7989,7 @@ bool core_serialize_special(retro_ctx_serialize_info_t *info)
    runloop_st->flags |=  RUNLOOP_FLAG_REQUEST_SPECIAL_SAVESTATE;
    ret                = runloop_st->current_core.retro_serialize(
                         info->data, info->size);
+   core_fpcr_restore_host();
    runloop_st->flags &= ~RUNLOOP_FLAG_REQUEST_SPECIAL_SAVESTATE;
 
    return ret;
@@ -7946,6 +8024,7 @@ void core_reset(void)
    video_driver_state_t *video_st = video_state_get_ptr();
    video_st->frame_cache_data     = NULL;
    runloop_st->current_core.retro_reset();
+   core_fpcr_leave();
 }
 
 void core_run(void)
@@ -7979,7 +8058,9 @@ void core_run(void)
    else if (late_polling)
       current_core->flags &= ~RETRO_CORE_FLAG_INPUT_POLLED;
 
+   core_fpcr_enter();
    current_core->retro_run();
+   core_fpcr_leave();
 
 #ifdef HAVE_GAME_AI
    {
